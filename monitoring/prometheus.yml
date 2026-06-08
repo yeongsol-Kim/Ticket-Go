@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'ticketgo'
+    static_configs:
+      # host.docker.internal = Docker 컨테이너에서 맥북 localhost 접근
+      - targets: ['host.docker.internal:8080']
+    metrics_path: '/actuator/prometheus'

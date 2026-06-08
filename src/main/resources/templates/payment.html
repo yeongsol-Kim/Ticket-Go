@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicketGo - 결제</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .navbar { background: #1a1a2e; color: white; padding: 1rem 2rem; }
+        .container { max-width: 600px; margin: 0 auto; padding: 2rem; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 2rem; margin-bottom: 1rem; }
+        .card-title { font-size: 1.25rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb; }
+        .info-row { display: flex; justify-content: space-between; padding: 0.75rem 0; }
+        .info-label { color: #6b7280; }
+        .info-value { font-weight: 500; }
+        .divider { border-top: 1px solid #e5e7eb; margin: 1rem 0; }
+        .total-row { display: flex; justify-content: space-between; font-size: 1.25rem; font-weight: bold; padding: 1rem 0; }
+        .payment-methods { margin-top: 1rem; }
+        .payment-option { display: flex; align-items: center; padding: 1rem; border: 2px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer; transition: all 0.2s; }
+        .payment-option:hover { border-color: #4f46e5; }
+        .payment-option.selected { border-color: #4f46e5; background: #eef2ff; }
+        .payment-option input { margin-right: 1rem; }
+        .payment-option-label { font-weight: 500; }
+        .btn { display: block; width: 100%; padding: 1rem; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; text-align: center; }
+        .btn-primary { background: #4f46e5; color: white; }
+        .btn-primary:hover { background: #4338ca; }
+        .timer { background: #fef3c7; color: #d97706; padding: 0.75rem 1rem; border-radius: 8px; text-align: center; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>TicketGo</h1>
+    </nav>
+
+    <div class="container">
+        <div class="timer">
+            결제 제한 시간: <strong id="timer">10:00</strong>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">예매 정보</h2>
+            <div class="info-row">
+                <span class="info-label">예약번호</span>
+                <span class="info-value" th:text="${booking.bookingNumber}">ABC123</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">이벤트</span>
+                <span class="info-value" th:text="${event.name}">이벤트명</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">티켓 수량</span>
+                <span class="info-value" th:text="${booking.ticketCount} + '매'">2매</span>
+            </div>
+            <div class="divider"></div>
+            <div class="total-row">
+                <span>총 결제금액</span>
+                <span th:text="${#numbers.formatInteger(booking.totalAmount, 0, 'COMMA')} + '원'">100,000원</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">결제 수단 선택</h2>
+            <form th:action="@{/bookings/{id}/pay(id=${booking.id})}" method="post">
+                <div class="payment-methods">
+                    <label class="payment-option selected">
+                        <input type="radio" name="paymentMethod" value="CARD" checked>
+                        <span class="payment-option-label">신용/체크카드</span>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="paymentMethod" value="BANK_TRANSFER">
+                        <span class="payment-option-label">계좌이체</span>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="paymentMethod" value="KAKAO_PAY">
+                        <span class="payment-option-label">카카오페이</span>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="paymentMethod" value="NAVER_PAY">
+                        <span class="payment-option-label">네이버페이</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">
+                    <span th:text="${#numbers.formatInteger(booking.totalAmount, 0, 'COMMA')} + '원 결제하기'">100,000원 결제하기</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 결제 수단 선택 UI
+        document.querySelectorAll('.payment-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.payment-option').forEach(o => o.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+
+        // 타이머
+        let timeLeft = 600;
+        setInterval(() => {
+            timeLeft--;
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.getElementById('timer').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            if (timeLeft <= 0) {
+                alert('결제 시간이 만료되었습니다.');
+                location.href = '/';
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(pkill -f \"gradlew bootRun\" lsof -ti:8080)",
+      "Bash(xargs kill -9 sleep 2 echo \"Stopped all processes\")",
+      "Bash(./gradlew clean build:*)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(python3:*)",
+      "Bash(./gradlew build:*)",
+      "Bash(xargs kill -9)",
+      "Bash(redis-cli:*)",
+      "Bash(__NEW_LINE__ TOKEN=\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJxdWV1ZXVzZXJAdGVzdC5jb20iLCJhdXRoIjoiUk9MRV9VU0VSIiwibWVtYmVySWQiOjMsImlhdCI6MTc2Nzg1ODAxOSwiZXhwIjoxNzY3OTQ0NDE5fQ.HoqtXf50wO7yzJQpqlAiPKSWyC10m48bE2iHDxgpxmg\")",
+      "Bash(__NEW_LINE__ echo \"=== 최종 테스트 결과 ===\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n2. 대기열 상태 조회:\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n3. 대기열 통계:\")",
+      "Bash(pkill:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0dXNlckB0ZXN0LmNvbSIsImF1dGgiOiJST0xFX1VTRVIiLCJtZW1iZXJJZCI6OCwiaWF0IjoxNzY3ODYyNTkzLCJleHAiOjE3Njc5NDg5OTN9.AcYX4sNuLd3t45sGCzlp0qbP8k2NrHv13LKBz-IW0nQ\")",
+      "Bash(__NEW_LINE__ echo \"=== 스케줄러 실행 후 대기열 상태 ===\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n=== Active 상태 확인 ===\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n=== 대기열 통계 ===\")",
+      "Bash(__NEW_LINE__ TOKEN=\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0dXNlckB0ZXN0LmNvbSIsImF1dGgiOiJST0xFX1VTRVIiLCJtZW1iZXJJZCI6OCwiaWF0IjoxNzY3ODYyNTkzLCJleHAiOjE3Njc5NDg5OTN9.AcYX4sNuLd3t45sGCzlp0qbP8k2NrHv13LKBz-IW0nQ\")",
+      "Bash(__NEW_LINE__ echo \"=== Active 상태 확인 ===\")",
+      "Bash(__NEW_LINE__ echo \"\")",
+      "Bash(__NEW_LINE__ redis-cli KEYS \"*:2\")",
+      "Bash(__NEW_LINE__ echo \"=== 1. 대기열 재입장 ===\")",
+      "Bash(__NEW_LINE__ echo \"=== Redis queue:2 내용 ===\")",
+      "Bash(__NEW_LINE__ echo \"스케줄러 실행 대기 중 \\(70초\\)...\")",
+      "Bash(for i in {70..1})",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(__NEW_LINE__ echo \"만료 대기 중 \\(120초\\)...\")",
+      "Bash(java -version:*)",
+      "Bash(./gradlew:*)",
+      "Bash(./gradlew test:*)"
+    ]
+  }
+}

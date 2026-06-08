@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicketGo - 대기열</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; color: white; }
+        .queue-container { text-align: center; padding: 2rem; }
+        .queue-title { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .event-name { font-size: 2rem; font-weight: bold; margin-bottom: 2rem; }
+        .queue-box { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 3rem; margin: 2rem 0; }
+        .position-label { font-size: 1rem; color: #a5b4fc; margin-bottom: 0.5rem; }
+        .position-number { font-size: 5rem; font-weight: bold; color: #818cf8; }
+        .waiting-info { margin-top: 1rem; color: #a5b4fc; }
+        .progress-bar { background: rgba(255,255,255,0.2); border-radius: 10px; height: 10px; margin: 2rem 0; overflow: hidden; }
+        .progress-fill { background: linear-gradient(90deg, #818cf8, #4f46e5); height: 100%; border-radius: 10px; transition: width 0.5s ease; }
+        .status-text { font-size: 1.25rem; margin-bottom: 1rem; }
+        .btn { display: inline-block; padding: 1rem 2rem; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; text-decoration: none; }
+        .btn-primary { background: #4f46e5; color: white; }
+        .btn-secondary { background: rgba(255,255,255,0.2); color: white; margin-left: 1rem; }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 1s linear infinite; margin-right: 0.5rem; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .quantity-control { display: flex; align-items: center; justify-content: center; gap: 1rem; margin: 1.5rem 0; }
+        .quantity-btn { width: 40px; height: 40px; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; background: rgba(255,255,255,0.1); color: white; font-size: 1.25rem; cursor: pointer; }
+        .quantity-input { width: 60px; text-align: center; font-size: 1.25rem; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 0.5rem; background: rgba(255,255,255,0.1); color: white; }
+        .hint { color: #a5b4fc; font-size: 0.9rem; margin-top: 0.5rem; }
+        .alert-error { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.5); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fca5a5; }
+    </style>
+</head>
+<body>
+    <div class="queue-container">
+        <p class="queue-title">예매 대기열</p>
+        <h1 class="event-name" th:text="${event.name}">이벤트명</h1>
+
+        <div th:if="${error}" class="alert-error" th:text="${error}"></div>
+
+        <!-- 대기열 미진입: 티켓 수량 선택 폼 -->
+        <div th:if="${!inQueue}" class="queue-box">
+            <p class="position-label">티켓 수량을 선택하고 대기열에 입장하세요</p>
+            <form th:action="@{/events/{id}/queue(id=${event.id})}" method="post">
+                <div class="quantity-control">
+                    <button type="button" class="quantity-btn" onclick="changeQuantity(-1)">-</button>
+                    <input type="number" name="ticketCount" id="ticketCount"
+                           class="quantity-input" value="1" min="1" max="4" readonly>
+                    <button type="button" class="quantity-btn" onclick="changeQuantity(1)">+</button>
+                </div>
+                <p class="hint">최대 4매까지 선택 가능합니다</p>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">대기열 입장</button>
+            </form>
+        </div>
+
+        <!-- 대기열 대기 중: 순번 표시 + 폴링 -->
+        <div th:if="${inQueue}" class="queue-box">
+            <p class="position-label">현재 대기 순번</p>
+            <p class="position-number" id="position" th:text="${position}">0</p>
+            <p class="waiting-info">
+                전체 대기: <span id="totalWaiting" th:text="${totalWaiting}">0</span>명
+            </p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"
+                     th:style="'width: ' + ${100 - (position * 100 / (totalWaiting > 0 ? totalWaiting : 1))} + '%'">
+                </div>
+            </div>
+            <p class="status-text">
+                <span class="spinner"></span>
+                잠시만 기다려주세요...
+            </p>
+        </div>
+
+        <div th:if="${!inQueue}">
+            <a href="/" class="btn btn-secondary">돌아가기</a>
+        </div>
+        <div th:if="${inQueue}">
+            <a href="/" class="btn btn-secondary">취소하고 돌아가기</a>
+        </div>
+    </div>
+
+    <script th:inline="javascript">
+        const eventId = [[${event.id}]];
+        const inQueue = [[${inQueue}]];
+
+        function changeQuantity(delta) {
+            const input = document.getElementById('ticketCount');
+            let value = parseInt(input.value) + delta;
+            if (value < 1) value = 1;
+            if (value > 4) value = 4;
+            input.value = value;
+        }
+
+        if (inQueue) {
+            // 3초마다 대기열 상태 폴링
+            setInterval(() => {
+                fetch(`/api/queue/${eventId}/status`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.isActive && data.bookingId) {
+                            // 결제 세션 발급됨 → 결제 페이지로 바로 이동
+                            location.href = `/bookings/${data.bookingId}/payment`;
+                        } else {
+                            document.getElementById('position').textContent = data.position;
+                            document.getElementById('totalWaiting').textContent = data.totalWaiting;
+                            const pct = 100 - (data.position * 100 / (data.totalWaiting > 0 ? data.totalWaiting : 1));
+                            document.getElementById('progressFill').style.width = pct + '%';
+                        }
+                    })
+                    .catch(err => console.error(err));
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

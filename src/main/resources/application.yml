@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: ticketgo
+
+  # Profile 설정
+  profiles:
+    active: dev  # 기본 프로필: dev
+
+  # JPA 공통 설정
+  jpa:
+    open-in-view: false  # OSIV 비활성화 (권장)
+    properties:
+      hibernate:
+        format_sql: true  # SQL 포맷팅
+        use_sql_comments: true  # SQL 주석 표시
+
+# Server 공통 설정
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: on_param  # ?trace=true 시에만 스택트레이스 표시
+
+# Logging 공통 설정
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+  level:
+    com.yeongsol.ticketgo: INFO
+    org.springframework.web: INFO
+
+# Actuator / Prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Custom Application Properties
+app:
+  booking:
+    timeout-minutes: 10  # 예약 타임아웃 (BookingService에서 사용)
+    max-tickets-per-booking: 4  # 1회 최대 예매 수
+
+  jwt:
+    secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm}
+    expiration: 86400000  # 24시간 (밀리초)
+
+# JWT 설정
+ticketgo:
+  jwt:
+    secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm}
+    expiration-ms: 86400000  # 24시간 (밀리초)

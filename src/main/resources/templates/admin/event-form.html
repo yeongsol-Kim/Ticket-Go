@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicketGo Admin - 이벤트 생성</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .navbar { background: #1a1a2e; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .navbar h1 { font-size: 1.5rem; }
+        .navbar span { background: #dc2626; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-left: 0.5rem; }
+        .navbar a { color: white; text-decoration: none; margin-left: 1rem; }
+        .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 2rem; }
+        .card-title { font-size: 1.5rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;
+        }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        .form-group textarea { min-height: 100px; resize: vertical; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .btn { display: inline-block; padding: 0.75rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; text-decoration: none; }
+        .btn-primary { background: #4f46e5; color: white; }
+        .btn-secondary { background: #e5e7eb; color: #374151; }
+        .btn-group { display: flex; gap: 1rem; margin-top: 2rem; }
+        .help-text { font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div>
+            <h1>TicketGo <span>ADMIN</span></h1>
+        </div>
+        <div>
+            <a href="/admin">대시보드</a>
+            <a href="/admin/events">이벤트 관리</a>
+            <a href="/logout">로그아웃</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2 class="card-title" th:text="${event != null} ? '이벤트 수정' : '새 이벤트 생성'">새 이벤트 생성</h2>
+
+            <form th:action="${event != null} ? @{/admin/events/{id}(id=${event.id})} : @{/admin/events}" method="post">
+                <div class="form-group">
+                    <label for="name">이벤트명 *</label>
+                    <input type="text" id="name" name="name" required
+                           th:value="${event != null} ? ${event.name} : ''"
+                           placeholder="예: 2025 BTS 콘서트">
+                </div>
+
+                <div class="form-group">
+                    <label for="description">설명</label>
+                    <textarea id="description" name="description"
+                              placeholder="이벤트 상세 설명" th:text="${event != null} ? ${event.description} : ''"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="venue">장소 *</label>
+                    <input type="text" id="venue" name="venue" required
+                           th:value="${event != null} ? ${event.venue} : ''"
+                           placeholder="예: 잠실 종합운동장">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="price">티켓 가격 (원) *</label>
+                        <input type="number" id="price" name="price" required min="0"
+                               th:value="${event != null} ? ${event.price} : ''"
+                               placeholder="예: 100000">
+                    </div>
+                    <div class="form-group">
+                        <label for="totalTickets">총 티켓 수 *</label>
+                        <input type="number" id="totalTickets" name="totalTickets" required min="1"
+                               th:value="${event != null} ? ${event.totalTickets} : ''"
+                               placeholder="예: 1000">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="startDateTime">공연 일시 *</label>
+                    <input type="datetime-local" id="startDateTime" name="startDateTime" required
+                           th:value="${event != null} ? ${#temporals.format(event.startDateTime, 'yyyy-MM-dd''T''HH:mm')} : ''">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="saleStartDateTime">판매 시작일시 *</label>
+                        <input type="datetime-local" id="saleStartDateTime" name="saleStartDateTime" required
+                               th:value="${event != null} ? ${#temporals.format(event.saleStartDateTime, 'yyyy-MM-dd''T''HH:mm')} : ''">
+                    </div>
+                    <div class="form-group">
+                        <label for="saleEndDateTime">판매 종료일시 *</label>
+                        <input type="datetime-local" id="saleEndDateTime" name="saleEndDateTime" required
+                               th:value="${event != null} ? ${#temporals.format(event.saleEndDateTime, 'yyyy-MM-dd''T''HH:mm')} : ''">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="status">상태 *</label>
+                    <select id="status" name="status" required>
+                        <option th:each="s : ${statuses}"
+                                th:value="${s.name()}"
+                                th:text="${s.name()}"
+                                th:selected="${event != null and event.status.name() == s.name()}">
+                        </option>
+                    </select>
+                    <p class="help-text">DRAFT: 작성중, ON_SALE: 판매중, SOLD_OUT: 매진, CANCELLED: 취소, COMPLETED: 종료</p>
+                </div>
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary" th:text="${event != null} ? '수정하기' : '생성하기'">생성하기</button>
+                    <a href="/admin/events" class="btn btn-secondary">취소</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

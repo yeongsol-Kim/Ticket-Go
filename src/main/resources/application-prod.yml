@@ -1,0 +1,38 @@
+# 운영 환경 설정
+spring:
+  # Database Configuration (운영용 MySQL)
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:ticketgo}?useSSL=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20  # 운영: 더 많은 커넥션
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000  # 커넥션 누수 감지
+
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate  # 운영: 스키마 검증만 (자동 변경 금지)
+    show-sql: false  # SQL 로그 출력 안 함
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        default_batch_fetch_size: 100
+        jdbc:
+          batch_size: 20  # 배치 insert 성능 향상
+
+# Logging (운영 환경 - 최소)
+logging:
+  level:
+    com.yeongsol.ticketgo: INFO  # 우리 패키지는 INFO만
+    org.springframework.web: WARN
+    org.hibernate.SQL: WARN
+  file:
+    name: logs/ticketgo.log  # 파일 로깅
+    max-size: 10MB
+    max-history: 30  # 30일치 보관
