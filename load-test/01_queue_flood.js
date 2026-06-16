@@ -70,7 +70,7 @@ export default function (users) {
     'status 200':    (r) => r.status === 200,
     'position >= 1': (r) => {
       try { return JSON.parse(r.body).position >= 1; }
-      catch { return false; }
+      catch (e) { return false; }
     },
   });
 

@@ -68,123 +68,125 @@ export default function (users) {
   if (!user || !user.token) return;
 
   const flowStart = Date.now();
-  let success = false;
 
-  try {
-    // ── 1단계: 대기열 진입 ──────────────────────────────────────
-    const enterRes = http.post(
-      `${BASE_URL}/api/queue/enter`,
-      JSON.stringify({ eventId: EVENT_ID, ticketCount: 1 }),
-      { headers: authHeaders(user.token) }
-    );
+  // ── 1단계: 대기열 진입 ──────────────────────────────────────
+  const enterRes = http.post(
+    `${BASE_URL}/api/queue/enter`,
+    JSON.stringify({ eventId: EVENT_ID, ticketCount: 1 }),
+    { headers: authHeaders(user.token) }
+  );
 
-    if (!check(enterRes, { '[1] 대기열 진입 200': (r) => r.status === 200 })) {
-      console.error(`[VU ${__VU}] 1단계 실패: ${enterRes.status}`);
-      flowFailCount.add(1);
-      return;
-    }
-    console.log(`[VU ${__VU}] [1/5] 대기열 진입 완료`);
-
-    // ── 2단계: 결제 세션 대기 폴링 ──────────────────────────────
-    const queueStart = Date.now();
-    let bookingId    = null;
-    const deadline   = Date.now() + MAX_WAIT_SECONDS * 1000;
-
-    while (Date.now() < deadline) {
-      sleep(POLL_INTERVAL_SEC);
-
-      const statusRes = http.get(
-        `${BASE_URL}/api/queue/status/${EVENT_ID}`,
-        { headers: authHeaders(user.token) }
-      );
-
-      if (statusRes.status !== 200) {
-        if (statusRes.status === 400 || statusRes.status === 404) break;
-        continue;
-      }
-
-      const status = JSON.parse(statusRes.body);
-      if (status.isActive) {
-        bookingId = status.bookingId;
-        break;
-      }
-    }
-
-    queueWaitDuration.add(Date.now() - queueStart);
-
-    if (!bookingId) {
-      console.error(`[VU ${__VU}] 2단계 실패: 결제 세션 미발급 (타임아웃 또는 재고 소진)`);
-      flowFailCount.add(1);
-      return;
-    }
-    console.log(`[VU ${__VU}] [2/5] 결제 세션 발급: bookingId=${bookingId}`);
-
-    // ── 3단계: 결제 요청 ────────────────────────────────────────
-    const payStart  = Date.now();
-    const payReqRes = http.post(
-      `${BASE_URL}/api/payments`,
-      JSON.stringify({ bookingId: bookingId, method: 'CARD' }),
-      { headers: authHeaders(user.token) }
-    );
-
-    if (!check(payReqRes, { '[3] 결제 요청 201': (r) => r.status === 201 })) {
-      console.error(`[VU ${__VU}] 3단계 실패: ${payReqRes.status} ${payReqRes.body}`);
-      flowFailCount.add(1);
-      return;
-    }
-
-    const payment = JSON.parse(payReqRes.body);
-    console.log(`[VU ${__VU}] [3/5] 결제 요청 완료: paymentId=${payment.id}`);
-
-    // ── 4단계: 결제 승인 (PG 콜백 시뮬레이션) ─────────────────
-    const approveRes = http.post(
-      `${BASE_URL}/api/payments/${payment.id}/approve`,
-      JSON.stringify({ paymentKey: `test-key-vu${__VU}-${Date.now()}` }),
-      { headers: authHeaders(user.token) }
-    );
-
-    paymentDuration.add(Date.now() - payStart);
-
-    if (!check(approveRes, { '[4] 결제 승인 200': (r) => r.status === 200 })) {
-      console.error(`[VU ${__VU}] 4단계 실패: ${approveRes.status}`);
-      flowFailCount.add(1);
-      return;
-    }
-    console.log(`[VU ${__VU}] [4/5] 결제 승인 완료`);
-
-    // ── 5단계: 예약 확정 검증 ───────────────────────────────────
-    const bookingsRes = http.get(
-      `${BASE_URL}/api/bookings/me`,
-      { headers: authHeaders(user.token) }
-    );
-
-    const verified = check(bookingsRes, {
-      '[5] 예약 조회 200':       (r) => r.status === 200,
-      '[5] CONFIRMED 예약 존재': (r) => {
-        try {
-          const bookings = JSON.parse(r.body);
-          return bookings.some(
-            (b) => b.id === bookingId && b.status === 'CONFIRMED'
-          );
-        } catch { return false; }
-      },
-    });
-
-    if (!verified) {
-      console.error(`[VU ${__VU}] 5단계 실패: 예약 CONFIRMED 아님`);
-      flowFailCount.add(1);
-      return;
-    }
-
-    console.log(`[VU ${__VU}] [5/5] 예약 확정 검증 완료 ✓`);
-    success = true;
-
-  } finally {
+  if (!check(enterRes, { '[1] 대기열 진입 200': (r) => r.status === 200 })) {
+    console.error(`[VU ${__VU}] 1단계 실패: ${enterRes.status}`);
+    flowFailCount.add(1);
     flowDuration.add(Date.now() - flowStart);
-    flowSuccessRate.add(success);
+    flowSuccessRate.add(false);
+    return;
+  }
+  console.log(`[VU ${__VU}] [1/5] 대기열 진입 완료`);
 
-    if (!success) {
-      console.error(`[VU ${__VU}] 전체 플로우 실패`);
+  // ── 2단계: 결제 세션 대기 폴링 ──────────────────────────────
+  const queueStart = Date.now();
+  let bookingId    = null;
+  const deadline   = Date.now() + MAX_WAIT_SECONDS * 1000;
+
+  while (Date.now() < deadline) {
+    sleep(POLL_INTERVAL_SEC);
+
+    const statusRes = http.get(
+      `${BASE_URL}/api/queue/status/${EVENT_ID}`,
+      { headers: authHeaders(user.token) }
+    );
+
+    if (statusRes.status !== 200) {
+      if (statusRes.status === 400 || statusRes.status === 404) break;
+      continue;
+    }
+
+    const status = JSON.parse(statusRes.body);
+    if (status.isActive) {
+      bookingId = status.bookingId;
+      break;
     }
   }
+
+  queueWaitDuration.add(Date.now() - queueStart);
+
+  if (!bookingId) {
+    console.error(`[VU ${__VU}] 2단계 실패: 결제 세션 미발급 (타임아웃 또는 재고 소진)`);
+    flowFailCount.add(1);
+    flowDuration.add(Date.now() - flowStart);
+    flowSuccessRate.add(false);
+    return;
+  }
+  console.log(`[VU ${__VU}] [2/5] 결제 세션 발급: bookingId=${bookingId}`);
+
+  // ── 3단계: 결제 요청 ────────────────────────────────────────
+  const payStart  = Date.now();
+  const payReqRes = http.post(
+    `${BASE_URL}/api/payments`,
+    JSON.stringify({ bookingId: bookingId, method: 'CARD' }),
+    { headers: authHeaders(user.token) }
+  );
+
+  if (!check(payReqRes, { '[3] 결제 요청 201': (r) => r.status === 201 })) {
+    console.error(`[VU ${__VU}] 3단계 실패: ${payReqRes.status} ${payReqRes.body}`);
+    flowFailCount.add(1);
+    flowDuration.add(Date.now() - flowStart);
+    flowSuccessRate.add(false);
+    return;
+  }
+
+  const payment = JSON.parse(payReqRes.body);
+  console.log(`[VU ${__VU}] [3/5] 결제 요청 완료: paymentId=${payment.id}`);
+
+  // ── 4단계: 결제 승인 (PG 콜백 시뮬레이션) ─────────────────
+  const approveRes = http.post(
+    `${BASE_URL}/api/payments/${payment.id}/approve`,
+    JSON.stringify({ paymentKey: `test-key-vu${__VU}-${Date.now()}` }),
+    { headers: authHeaders(user.token) }
+  );
+
+  paymentDuration.add(Date.now() - payStart);
+
+  if (!check(approveRes, { '[4] 결제 승인 200': (r) => r.status === 200 })) {
+    console.error(`[VU ${__VU}] 4단계 실패: ${approveRes.status}`);
+    flowFailCount.add(1);
+    flowDuration.add(Date.now() - flowStart);
+    flowSuccessRate.add(false);
+    return;
+  }
+  console.log(`[VU ${__VU}] [4/5] 결제 승인 완료`);
+
+  // ── 5단계: 예약 확정 검증 ───────────────────────────────────
+  const bookingsRes = http.get(
+    `${BASE_URL}/api/bookings/me`,
+    { headers: authHeaders(user.token) }
+  );
+
+  let confirmed = false;
+  try {
+    const bookings = JSON.parse(bookingsRes.body);
+    const targetId = bookingId;
+    confirmed = Array.isArray(bookings) && bookings.some(
+      (b) => b.id === targetId && b.status === 'CONFIRMED'
+    );
+  } catch (e) { confirmed = false; }
+
+  const verified = check(bookingsRes, {
+    '[5] 예약 조회 200':       (r) => r.status === 200,
+    '[5] CONFIRMED 예약 존재': () => confirmed,
+  });
+
+  if (!verified) {
+    console.error(`[VU ${__VU}] 5단계 실패: 예약 CONFIRMED 아님`);
+    flowFailCount.add(1);
+    flowDuration.add(Date.now() - flowStart);
+    flowSuccessRate.add(false);
+    return;
+  }
+
+  console.log(`[VU ${__VU}] [5/5] 예약 확정 검증 완료 ✓`);
+  flowDuration.add(Date.now() - flowStart);
+  flowSuccessRate.add(true);
 }
