@@ -87,6 +87,29 @@ public class PaymentService {
     }
 
     /**
+     * 결제 승인 - Pre-issued 방식 (UPDATE)
+     * 사전 발급된 AVAILABLE 티켓을 조회해 bookingId 할당
+     */
+    @Transactional
+    public void approvePaymentPreIssued(Long paymentId, String paymentKey) {
+        Payment payment = findById(paymentId);
+        payment.approve(paymentKey);
+
+        Booking booking = bookingRepository.findById(payment.getBookingId())
+                .orElseThrow(BookingNotFoundException::new);
+        booking.confirm();
+
+        for (int i = 0; i < booking.getTicketCount(); i++) {
+            Ticket ticket = ticketRepository
+                    .findFirstByEventIdAndStatus(booking.getEventId(), com.yeongsol.ticketgo.domain.ticket.model.TicketStatus.AVAILABLE)
+                    .orElseThrow(() -> new IllegalStateException("사용 가능한 티켓이 없습니다"));
+            ticket.assign(booking.getId());
+        }
+
+        log.info("결제 승인 완료 (Pre-issued) - paymentId: {}, bookingId: {}", paymentId, booking.getId());
+    }
+
+    /**
      * 결제 실패 처리
      */
     @Transactional

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -95,5 +96,18 @@ public class TicketService {
     public Ticket findById(Long ticketId) {
         return ticketRepository.findById(ticketId)
                 .orElseThrow(TicketNotFoundException::new);
+    }
+
+    /**
+     * 이벤트 티켓 사전 발급 (Pre-issued 방식)
+     * 이벤트 생성 시 totalTickets 수만큼 AVAILABLE 상태로 미리 생성
+     */
+    @Transactional
+    public void preIssueTickets(Long eventId, int count) {
+        List<Ticket> tickets = IntStream.range(0, count)
+                .mapToObj(i -> Ticket.preIssue(eventId))
+                .toList();
+        ticketRepository.saveAll(tickets);
+        log.info("티켓 사전 발급 완료 - eventId: {}, count: {}", eventId, count);
     }
 }

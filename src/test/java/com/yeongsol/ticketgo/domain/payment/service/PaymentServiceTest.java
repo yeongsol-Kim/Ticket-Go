@@ -11,6 +11,8 @@ import com.yeongsol.ticketgo.domain.payment.model.Payment;
 import com.yeongsol.ticketgo.domain.payment.model.PaymentMethod;
 import com.yeongsol.ticketgo.domain.payment.model.PaymentStatus;
 import com.yeongsol.ticketgo.domain.payment.repository.PaymentRepository;
+import com.yeongsol.ticketgo.domain.ticket.model.Ticket;
+import com.yeongsol.ticketgo.domain.ticket.model.TicketStatus;
 import com.yeongsol.ticketgo.domain.ticket.repository.TicketRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -196,6 +198,64 @@ class PaymentServiceTest {
             assertThatThrownBy(() -> paymentService.approvePayment(paymentId, "new_key"))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessage("Payment is not in pending state");
+        }
+    }
+
+    @Nested
+    @DisplayName("approvePaymentPreIssued 테스트 (Pre-issued 방식)")
+    class ApprovePaymentPreIssuedTest {
+
+        @Test
+        @DisplayName("결제 승인 성공 - AVAILABLE 티켓이 BOOKED로 변경되고 bookingId 할당됨")
+        void approvePaymentPreIssued_success() {
+            // Given
+            Long paymentId = 1L;
+            Long bookingId = 1L;
+            Long eventId = 1L;
+            String paymentKey = "pg_payment_key_123";
+
+            Payment mockPayment = createMockPayment(paymentId, bookingId, 1L);
+            Booking mockBooking = createMockBooking(bookingId, 1L, 50000);
+            setFieldValue(mockBooking, "eventId", eventId);
+
+            Ticket availableTicket = Ticket.preIssue(eventId);
+
+            given(paymentRepository.findById(paymentId)).willReturn(Optional.of(mockPayment));
+            given(bookingRepository.findById(bookingId)).willReturn(Optional.of(mockBooking));
+            given(ticketRepository.findFirstByEventIdAndStatus(eventId, TicketStatus.AVAILABLE))
+                    .willReturn(Optional.of(availableTicket));
+
+            // When
+            paymentService.approvePaymentPreIssued(paymentId, paymentKey);
+
+            // Then
+            assertThat(mockPayment.getStatus()).isEqualTo(PaymentStatus.APPROVED);
+            assertThat(mockBooking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+            assertThat(availableTicket.getStatus()).isEqualTo(TicketStatus.BOOKED);
+            assertThat(availableTicket.getBookingId()).isEqualTo(bookingId);
+        }
+
+        @Test
+        @DisplayName("결제 승인 실패 - AVAILABLE 티켓 없음")
+        void approvePaymentPreIssued_noAvailableTicket_throwsException() {
+            // Given
+            Long paymentId = 1L;
+            Long bookingId = 1L;
+            Long eventId = 1L;
+
+            Payment mockPayment = createMockPayment(paymentId, bookingId, 1L);
+            Booking mockBooking = createMockBooking(bookingId, 1L, 50000);
+            setFieldValue(mockBooking, "eventId", eventId);
+
+            given(paymentRepository.findById(paymentId)).willReturn(Optional.of(mockPayment));
+            given(bookingRepository.findById(bookingId)).willReturn(Optional.of(mockBooking));
+            given(ticketRepository.findFirstByEventIdAndStatus(eventId, TicketStatus.AVAILABLE))
+                    .willReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> paymentService.approvePaymentPreIssued(paymentId, "key"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("사용 가능한 티켓이 없습니다");
         }
     }
 

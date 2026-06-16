@@ -2,7 +2,9 @@ package com.yeongsol.ticketgo.domain.ticket.repository;
 
 import com.yeongsol.ticketgo.domain.ticket.model.Ticket;
 import com.yeongsol.ticketgo.domain.ticket.model.TicketStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +18,13 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
      * 예약 상세 조회, 취소 시 사용
      */
     List<Ticket> findByBookingId(Long bookingId);
+
+    /**
+     * 이벤트의 AVAILABLE 티켓 1개 조회 (비관적 락)
+     * Pre-issued 방식에서 결제 승인 시 사용
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<Ticket> findFirstByEventIdAndStatus(Long eventId, TicketStatus status);
 
     /**
      * 티켓 번호로 조회

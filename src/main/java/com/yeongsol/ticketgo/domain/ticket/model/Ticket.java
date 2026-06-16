@@ -25,7 +25,7 @@ public class Ticket {
     @Column(nullable = false)
     private Long eventId;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private Long bookingId;
 
     @Column(nullable = false, unique = true, length = 36)
@@ -51,7 +51,23 @@ public class Ticket {
         this.status = TicketStatus.BOOKED;
     }
 
+    public static Ticket preIssue(Long eventId) {
+        Ticket ticket = new Ticket();
+        ticket.eventId = eventId;
+        ticket.ticketNumber = java.util.UUID.randomUUID().toString();
+        ticket.status = TicketStatus.AVAILABLE;
+        return ticket;
+    }
+
     // 비즈니스 로직
+    public void assign(Long bookingId) {
+        if (this.status != TicketStatus.AVAILABLE) {
+            throw new IllegalStateException("Ticket is not available");
+        }
+        this.bookingId = bookingId;
+        this.status = TicketStatus.BOOKED;
+    }
+
     public void cancel() {
         if (this.status == TicketStatus.CANCELLED) {
             throw new IllegalStateException("Ticket is already cancelled");

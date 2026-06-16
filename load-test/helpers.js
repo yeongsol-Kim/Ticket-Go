@@ -60,3 +60,27 @@ export function setupUser(index) {
   const token = loginUser(email, password);
   return { email, token, index };
 }
+
+/**
+ * 어드민 로그인 → JWT 토큰 반환
+ */
+export function loginAdmin() {
+  return loginUser('admin@ticketgo.com', 'admin123');
+}
+
+/**
+ * 이벤트 티켓 사전 발급 (Pre-issued 방식용)
+ */
+export function preIssueTickets(adminToken, eventId, count) {
+  const res = http.post(
+    `${BASE_URL}/api/admin/tickets/pre-issue?eventId=${eventId}&count=${count}`,
+    null,
+    { headers: authHeaders(adminToken) }
+  );
+  if (res.status !== 200) {
+    console.error(`[preIssue] 실패: status=${res.status} body=${res.body}`);
+    return false;
+  }
+  console.log(`[preIssue] 완료: eventId=${eventId}, count=${count}`);
+  return true;
+}

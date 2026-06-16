@@ -73,6 +73,19 @@ public class PaymentController {
     }
 
     /**
+     * 결제 승인 - Pre-issued 방식 (UPDATE)
+     * POST /api/payments/{id}/approve-v2
+     */
+    @PostMapping("/{id}/approve-v2")
+    public ResponseEntity<?> approvePaymentPreIssued(
+            @PathVariable Long id,
+            @Valid @RequestBody ApproveRequest request) {
+
+        paymentService.approvePaymentPreIssued(id, request.paymentKey());
+        return ResponseEntity.ok(new SuccessResponse("결제가 승인되었습니다 (Pre-issued)"));
+    }
+
+    /**
      * 결제 실패 처리 (PG사 콜백)
      * POST /api/payments/{id}/fail
      */
