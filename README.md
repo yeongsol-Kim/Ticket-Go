@@ -1,314 +1,155 @@
 # Ticketgo - 대용량 트래픽 처리 티케팅 서비스
 
-> 콘서트/공연 티케팅 시스템으로 대용량 동시 트래픽 처리 및 동시성 제어를 학습하기 위한 포트폴리오 프로젝트
+> 콘서트/공연 선착순 티케팅 시스템. 대량 동시 접속, 동시성 제어, 대기열 관리를 직접 구현하고 k6 부하테스트로 검증한 포트폴리오 프로젝트.
 
-## 프로젝트 개요
+---
 
-실제 티케팅 서비스에서 발생하는 **대량의 동시 접속과 선착순 예매 경쟁 상황**을 시뮬레이션하고, 다양한 동시성 제어 전략을 구현하여 성능을 비교 분석하는 프로젝트입니다.
-
-### 핵심 목표
-- 🎯 대용량 트래픽 처리 (10,000+ 동시 접속)
-- 🔒 동시성 제어 전략 구현 (낙관적 락, 비관적 락, 분산 락)
-- ⚡ 성능 최적화 및 벤치마크
-- 📊 실시간 대기열 시스템
-- 🎫 이벤트 기반 아키텍처 (Kafka)
 ## 기술 스택
 
-### Backend
-- **Java 21** - 최신 LTS 버전
-- **Spring Boot 3.5.9** - 프레임워크
-- **Spring Data JPA** - ORM
-- **Spring Security + JWT** - 인증/인가
-- **MySQL 8.0** - 메인 데이터베이스
-
-### Infrastructure
-- **Redis** - 분산 락, 대기열 관리, 캐싱
-- **Kafka** - 이벤트 기반 비동기 처리
-- **Redisson** - 분산 락 구현
-
-### Monitoring & Testing
-- **Micrometer + Prometheus** - 메트릭 수집
-- **Spring Boot Actuator** - 헬스 체크
-- **JMeter / K6** - 부하 테스트
-- **Testcontainers** - 통합 테스트
-
-## 아키텍처 설계
-
-### DDD (Domain-Driven Design) 계층 구조
-
-```
-presentation/     # API Controllers
-    └── api/
-application/      # Use Cases (비즈니스 플로우)
-    ├── booking/
-    ├── event/
-    └── queue/
-domain/           # 도메인 모델 (핵심 비즈니스 로직)
-    ├── member/
-    ├── event/
-    ├── ticket/
-    ├── booking/
-    └── payment/
-infrastructure/   # 외부 시스템 연동
-    ├── persistence/
-    ├── messaging/
-    └── external/
-```
-
-### 주요 도메인 모델
-
-#### Event (공연/이벤트)
-- 공연 정보 관리
-- 전체 티켓 수 및 남은 티켓 수 추적
-- 상태: DRAFT, ON_SALE, SOLD_OUT, CANCELLED, COMPLETED
-
-#### Ticket (티켓)
-- **예약 시점에 생성** (INSERT 방식)
-- 판매된 티켓만 DB에 저장하여 효율성 극대화
-
-#### Booking (예약)
-- 15분 타임아웃 적용
-- 상태: PENDING, RESERVED, CONFIRMED, CANCELLED, EXPIRED
-- 낙관적 락 적용 (@Version)
-
-#### Payment (결제)
-- Mock 결제 게이트웨이 연동
-- 상태: PENDING, APPROVED, FAILED, CANCELLED, REFUNDED
-
-#### Member (회원)
-- 이메일 기반 인증
-- 등급: REGULAR, VIP (대기열 우선순위)
-- 권한: USER, ADMIN
+| 분류 | 기술 |
+|---|---|
+| Backend | Java 21, Spring Boot 3.5.9, Spring Security + JWT |
+| Database | MySQL 8.0, Spring Data JPA |
+| Cache / Queue | Redis (Sorted Set 기반 대기열) |
+| Monitoring | Prometheus, Grafana, Spring Actuator |
+| Infra | AWS EC2, Docker Compose |
+| CI/CD | GitHub Actions |
+| Load Test | k6 |
 
 ---
 
-## 핵심 설계 결정사항
+## 시스템 아키텍처
 
-### 1. 티켓 관리 방식: 예약 시 생성 방식 선택
-
-티케팅 시스템에서 가장 중요한 설계 결정 중 하나는 **티켓을 언제 생성할 것인가**입니다.
-
-#### 비교한 두 가지 방식
-
-##### 방식 1: 이벤트 생성 시 티켓 미리 생성
 ```
-Event 생성 시:
-  INSERT INTO tickets ... (총 10,000건 생성)
-
-예약 시:
-  UPDATE tickets SET status='RESERVED', booking_id=123
-  WHERE id IN (1,2,3) AND status='AVAILABLE'
+[Client]
+   │
+   ▼
+[Spring Boot App : 8080]
+   ├── Auth API       (JWT 발급)
+   ├── Queue API      (Redis Sorted Set 대기열)
+   ├── Booking API    (낙관적 락 + 재고 차감)
+   └── Payment API    (결제 요청 / 승인)
+   │
+   ├── [MySQL 8.0]    예약 / 결제 / 티켓 / 회원 데이터
+   └── [Redis 7.0]    대기열, 결제 세션
 ```
 
-**장점:**
-- 티켓별 상태를 DB에서 직접 관리 가능
-- 좌석 지정 공연에 유리
+### 배포 구성
 
-**단점:**
-- 이벤트 생성 시 대량 INSERT 필요
-- 예약 시 UPDATE 연산 (INSERT보다 느림)
-- 타임아웃 관리 복잡 (RESERVED 상태 티켓 처리)
-- 미판매 티켓도 DB에 저장 (리소스 낭비)
-
-##### 방식 2: 예약 시 티켓 생성 ✅ **최종 선택**
 ```
-Event 생성 시:
-  INSERT INTO events (totalTickets=10000, availableTickets=10000)
-
-예약 시:
-  UPDATE events SET availableTickets = availableTickets - 2
-  INSERT INTO tickets (event_id, booking_id, ticket_number)
-  INSERT INTO tickets (event_id, booking_id, ticket_number)
+GitHub → GitHub Actions → Docker Hub → EC2 (t3.small)
+                                         └── docker-compose
+                                               ├── ticketgo-app
+                                               ├── ticketgo-mysql
+                                               ├── ticketgo-redis
+                                               ├── ticketgo-prometheus
+                                               └── ticketgo-grafana
 ```
-
-**장점:**
-- ✅ Event 생성이 가벼움 (즉시 판매 가능)
-- ✅ **INSERT가 UPDATE보다 30-40% 빠름** (벤치마크 예정)
-- ✅ 판매된 티켓만 DB에 저장 (리소스 효율)
-- ✅ 타임아웃 관리 간단 (Booking 레벨에서만)
-- ✅ 불필요한 상태 변경 제거
-
-**단점:**
-- Event.availableTickets가 hot spot (모든 예약이 한 row 경합)
-- **해결책**: 분산 락 + 대기열 시스템으로 트래픽 제어
-
-#### 최종 결정 이유
-
-선착순 티케팅 특성상:
-1. 좌석 번호가 필요 없음 (누가 먼저 예약하느냐만 중요)
-2. INSERT 연산이 UPDATE보다 빠르고 효율적
-3. 현재 요구사항에 최적화 (YAGNI 원칙)
-
-#### 향후 확장성 (좌석 지정 공연)
-
-좌석 지정이 필요한 경우:
-```java
-@Entity
-class Event {
-    Boolean hasSeating;  // 좌석 여부 플래그
-}
-
-@Entity
-class Seat {  // 좌석 지정 공연용 (새로 추가)
-    Long eventId;
-    String seatNumber;  // "A-15"
-    SeatStatus status;
-}
-```
-
-- 선착순: 기존 방식 유지 (Ticket INSERT)
-- 좌석 지정: Seat 엔티티 추가 (Seat 미리 생성 + UPDATE)
-- 기존 코드 영향 최소화
 
 ---
 
-### 2. 동시성 제어 전략 (3가지 구현 예정)
+## 핵심 기능 및 설계
 
-#### 낙관적 락 (Optimistic Locking)
+### 1. Redis 대기열 시스템
+
+티켓팅 오픈 시 대량 동시 접속을 순서대로 처리하기 위해 Redis Sorted Set 기반 대기열을 구현했습니다.
+
+```
+[사용자] → 대기열 진입 (ZADD queue:{eventId} timestamp memberId)
+              ↓
+[QueueScheduler] → 5초마다 상위 10명 dequeue → Booking 생성 → 결제 세션 발급
+              ↓
+[사용자] → 폴링 (GET /api/queue/status/{eventId})
+              ↓ isActive=true
+[사용자] → 결제 요청 → 결제 승인
+```
+
+**핵심 설계 포인트:**
+- 스케줄러 기반 순차 처리로 DB 동시 쓰기 부하 분산 (10명/5초)
+- 결제 세션 TTL 600초 적용으로 자동 만료 처리
+- 중복 진입 방지 (이미 대기 중이면 현재 순번 반환)
+
+### 2. 동시성 제어 - 낙관적 락
+
 ```java
 @Version
-private Integer version;
+private Integer version;  // Event 엔티티 낙관적 락
 ```
-- JPA의 @Version 활용
-- 충돌 시 재시도 (OptimisticLockException)
-- 낮은 경합 상황에 적합
 
-#### 비관적 락 (Pessimistic Locking)
-```java
-@Lock(LockModeType.PESSIMISTIC_WRITE)
-SELECT ... FOR UPDATE
-```
-- DB row-level lock
-- 높은 경합 상황에 적합
-- 데드락 위험 관리 필요
+- 재고 차감 시 `@Version`으로 동시 수정 충돌 감지
+- `OptimisticLockException` 발생 시 최대 3회 재시도
+- 스케줄러 기반 순차 처리와 결합해 충돌 최소화
 
-#### 분산 락 (Distributed Lock with Redis)
-```java
-RLock lock = redisson.getLock("event:" + eventId);
-lock.lock(10, TimeUnit.SECONDS);
-```
-- Redis + Redisson 활용
-- 멀티 인스턴스 환경 지원
-- 대기열 시스템과 결합
+### 3. 티켓 발급 방식 비교 구현
 
-#### 하이브리드 전략 (최종 목표)
+두 가지 티켓 발급 방식을 모두 구현하고 성능 비교:
+
+#### 방식 A: 결제 시 INSERT (기본 방식)
 ```
-대기열 진입 → 순서 보장 (Redis Sorted Set)
-    ↓
-입장 허가 (초당 100명)
-    ↓
-분산 락 획득 (Redis)
-    ↓
-재고 확인 + 예약 생성 (낙관적 락)
-    ↓
-결제 처리 (Kafka 비동기)
+결제 승인 시 → INSERT INTO tickets (새 행 생성)
 ```
+
+#### 방식 B: 사전 발급 후 UPDATE
+```
+이벤트 생성 시 → 티켓 미리 생성 (AVAILABLE)
+결제 승인 시  → UPDATE tickets SET booking_id=? (기존 행 수정)
+```
+
+→ 200명 규모에서는 유의미한 차이 없음. UPDATE 방식의 비관적 락 overhead가 오히려 소폭 느렸음. 상세 결과는 [시나리오 05](#시나리오-05---insert-vs-update-방식-비교-200-vu) 참고.
 
 ---
 
-### 3. 대기열 시스템
+## 부하테스트 결과 (k6)
 
-#### Redis Sorted Set 활용
-```
-Key: queue:{eventId}
-Score: timestamp + random (공정성)
-Value: userId
-```
+모든 테스트는 AWS EC2 t3.small 환경에서 진행.
 
-**주요 기능:**
-- 공정한 순서 보장
-- 실시간 대기 순서 조회
-- 제어된 입장 (초당 100명)
-- JWT 토큰 기반 입장 권한 부여
+### 시나리오 01 - 대기열 폭주 (100 VU)
 
----
+| 지표 | 결과 |
+|---|---|
+| 성공률 | 100% |
+| queue_enter_duration avg | 339ms |
+| p(95) | 366ms |
+| http_req_failed | 0% |
 
-### 4. 데이터베이스 설계
+### 시나리오 02 - Race Condition 검증 (100 VU / 티켓 50장)
 
-#### 인덱스 전략
-```sql
--- Event 조회 최적화
-CREATE INDEX idx_event_status_sale ON events(status, sale_start_date_time);
+| 지표 | 결과 |
+|---|---|
+| got_booking | **50** (초과 발급 0건) |
+| no_booking | 50 |
+| http_req_failed | 0% |
 
--- Ticket 조회 최적화
-CREATE INDEX idx_ticket_event_status ON tickets(event_id, status);
+→ 낙관적 락 + 스케줄러 순차 처리로 정확히 50건만 예약 성공
 
--- Booking 타임아웃 처리
-CREATE INDEX idx_booking_status_expires ON bookings(status, expires_at);
+### 시나리오 03 - E2E 전체 플로우 (50 VU)
 
--- Payment 조회
-CREATE UNIQUE INDEX idx_payment_booking ON payments(booking_id);
-```
+| 지표 | 결과 |
+|---|---|
+| flow_success | 96% |
+| payment_duration p(95) | 977ms |
+| full_flow_duration avg | 13.89s |
 
-#### FK는 ID만 저장 (JPA 연관관계 미사용)
-```java
-// ❌ JPA 연관관계 사용 X
-@ManyToOne
-private Event event;
+→ 대기열 진입 → 결제 승인 → 예약 CONFIRMED 전 과정 검증
 
-// ✅ ID만 저장
-@Column(name = "event_id")
-private Long eventId;
-```
+### 시나리오 04 - 대규모 Race Condition (1000 VU / 티켓 50장)
 
-**이유:**
-- N+1 문제 방지
-- 명시적 조인 쿼리 작성
-- 성능 최적화 용이
+| 지표 | 결과 |
+|---|---|
+| got_booking | **50** (초과 발급 0건) |
+| no_booking | 950 |
+| http_req_failed | 0.03% |
 
----
+→ 1000명 동시 접속에서도 오버부킹 0건 달성
 
-## API 엔드포인트 (예정)
+### 시나리오 05 - INSERT vs UPDATE 방식 비교 (200 VU)
 
-### 공연 조회
-- `GET /api/v1/events` - 공연 목록
-- `GET /api/v1/events/{eventId}` - 공연 상세
+| 방식 | avg | p(95) | 성공률 |
+|---|---|---|---|
+| INSERT | 175ms | 230ms | 50.5%* |
+| UPDATE | 181ms | 225ms | 89.5% |
 
-### 대기열
-- `POST /api/v1/events/{eventId}/queue/join` - 대기열 진입
-- `GET /api/v1/events/{eventId}/queue/position` - 순서 조회
-- `GET /api/v1/events/{eventId}/queue/stream` - SSE 실시간 업데이트
-
-### 예약
-- `POST /api/v1/bookings` - 예약 생성
-- `GET /api/v1/bookings/{bookingId}` - 예약 조회
-- `DELETE /api/v1/bookings/{bookingId}` - 예약 취소
-
-### 결제
-- `POST /api/v1/payments` - 결제 요청
-- `POST /api/v1/payments/confirm` - 결제 확인 (웹훅)
-
----
-
-## 성능 목표
-
-### 처리량
-- 대기열 진입: **10,000 req/s**
-- 예약 생성: **1,000 req/s**
-- 결제 처리: **500 req/s**
-
-### 응답 시간 (p99)
-- 대기열 진입: **< 100ms**
-- 예약 생성: **< 500ms**
-- 결제 처리: **< 300ms**
-
-### 동시성 정확도
-- 10,000명이 100장 티켓 경쟁
-- 정확히 100개만 성공
-- **오버부킹 0건 보장**
-
----
-
-## 개발 일정
-
-- [x] **Phase 1**: 기본 인프라 및 도메인 모델 (1주차)
-- [ ] **Phase 2**: 동시성 제어 전략 구현 (2주차)
-- [ ] **Phase 3**: 대기열 시스템 (3주차)
-- [ ] **Phase 4**: Kafka 이벤트 기반 아키텍처 (4주차)
-- [ ] **Phase 5**: 결제 통합 및 워크플로우 (5주차)
-- [ ] **Phase 6**: 성능 최적화 및 캐싱 (6주차)
-- [ ] **Phase 7**: 모니터링 및 성능 테스트 (7주차)
-- [ ] **Phase 8**: 테스트 및 문서화 (8주차)
+*INSERT 방식 성공률 저하는 200 VU 동시 접속 시 서버 connection reset 발생 (t3.small 한계)
 
 ---
 
@@ -316,46 +157,109 @@ private Long eventId;
 
 ### 사전 요구사항
 - Java 21
-- MySQL 8.0
-- Redis
-- Kafka
+- Docker, Docker Compose
 
 ### 로컬 실행
-```bash
-# 의존성 다운로드
-./gradlew build
 
-# 애플리케이션 실행
+```bash
+# 인프라 실행 (MySQL, Redis, Prometheus, Grafana)
+docker compose up -d
+
+# 앱 실행
 ./gradlew bootRun
 ```
 
-### 환경 변수
+### 부하테스트 실행
+
 ```bash
-DB_USERNAME=root
-DB_PASSWORD=your-password
-JWT_SECRET=your-secret-key
+# k6 설치 후
+k6 run load-test/01_queue_flood.js
+k6 run load-test/02_race_condition.js
+k6 run load-test/03_full_flow.js
+k6 run -e EVENT_ID=4 load-test/04_race_condition_2.js
+k6 run load-test/05_insert_vs_update.js
+
+# EC2 대상 실행
+k6 run -e BASE_URL=http://{EC2_IP}:8080 load-test/01_queue_flood.js
+```
+
+### 테스트 실행
+
+```bash
+./gradlew test
 ```
 
 ---
 
-## 기술적 고민과 학습 포인트
+## API 엔드포인트
 
-### 1. 티켓 생성 시점 결정
-- 미리 생성 vs 예약 시 생성
-- INSERT vs UPDATE 성능 비교
-- 트레이드오프 분석
+### 인증
+- `POST /api/auth/login` - 로그인 (JWT 발급)
 
-### 2. 동시성 제어
-- 낙관적 락 vs 비관적 락 vs 분산 락
-- 각 전략의 적합한 사용 시나리오
-- 실제 부하 테스트 결과 비교
+### 회원
+- `POST /api/members` - 회원가입
 
-### 3. 대기열 설계
-- 공정성 보장 알고리즘
-- Redis Sorted Set 활용
-- 트래픽 제어 전략
+### 이벤트
+- `GET /api/events` - 이벤트 목록
+- `GET /api/events/{id}` - 이벤트 상세
 
-### 4. 확장성 고려
-- 현재 요구사항과 미래 확장성의 균형
-- YAGNI 원칙 적용
-- 좌석 지정 기능 확장 가능성
+### 대기열
+- `POST /api/queue/enter` - 대기열 진입
+- `GET /api/queue/status/{eventId}` - 대기열 상태 조회
+
+### 예약
+- `GET /api/bookings/me` - 내 예약 목록
+
+### 결제
+- `POST /api/payments` - 결제 요청
+- `POST /api/payments/{id}/approve` - 결제 승인 (INSERT 방식)
+- `POST /api/payments/{id}/approve-v2` - 결제 승인 (UPDATE 방식)
+
+---
+
+## 한계점 및 개선 방향
+
+### 현재 환경 한계
+
+단일 EC2 t3.small (2 vCPU, 2GB RAM)에 앱 + MySQL + Redis + Prometheus + Grafana를 모두 올린 구성으로, 200명 동시 접속 시 `connection reset by peer` 에러가 발생했습니다.
+
+**원인 분석:**
+- 단일 서버에 모든 컴포넌트가 경합 → CPU/메모리 부족
+- HikariCP 커넥션 풀 한계 (최대 20개)
+- Tomcat 스레드 풀 소진
+
+### 실제 서비스 적용 시 개선 방향
+
+| 문제 | 해결책 |
+|---|---|
+| 서버 단일 장애점 | 로드밸런서 + 다중 서버 (Auto Scaling) |
+| DB 병목 | RDS로 분리, Read Replica 추가 |
+| Redis 단일 장애점 | ElastiCache (Redis Cluster) |
+| 대규모 부하 테스트 | k6 Cloud 또는 분산 실행 |
+| 커넥션 풀 부족 | PgBouncer 또는 커넥션 풀 튜닝 |
+
+### 코드 레벨 개선 가능 사항
+
+- **대기열 스케줄러**: 현재 5초/10명 고정 → 실시간 부하 기반 동적 조절
+- **티켓 발급**: INSERT vs UPDATE 비교에서 유의미한 차이가 없었음 → 더 높은 동시성(1000명+)에서 재검증 필요
+- **결제 승인**: 동기 처리 → Kafka 등 메시지 큐를 통한 비동기 처리로 응답시간 개선 가능
+
+---
+
+## CI/CD
+
+GitHub Actions를 통한 자동 배포 파이프라인:
+
+```
+코드 push (main)
+    ↓
+GitHub Actions
+    ├── JDK 21 설정
+    ├── Gradle bootJar 빌드
+    ├── Docker 이미지 빌드
+    └── Docker Hub push
+         ↓
+    EC2 SSH 접속
+    ├── docker pull
+    └── docker-compose up -d
+```
