@@ -44,3 +44,7 @@ docker-compose.yml
 ### Logs ###
 logs/
 *.log
+
+### macOS ###
+.DS_Store
+**/.DS_Store
