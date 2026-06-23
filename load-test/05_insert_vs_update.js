@@ -20,10 +20,11 @@ const updateApprovalDuration = new Trend('update_approval_duration', true);
 const insertSuccessRate      = new Rate('insert_success');
 const updateSuccessRate      = new Rate('update_success');
 
-const NUM_USERS         = 50;
-const EVENT_ID          = parseInt(__ENV.EVENT_ID || '1');
-const MAX_WAIT_SECONDS  = 120;
-const POLL_INTERVAL_SEC = 2;
+const NUM_USERS            = 200;
+const INSERT_EVENT_ID      = parseInt(__ENV.INSERT_EVENT_ID || '3');
+const UPDATE_EVENT_ID      = parseInt(__ENV.UPDATE_EVENT_ID || '4');
+const MAX_WAIT_SECONDS     = 180;
+const POLL_INTERVAL_SEC    = 2;
 
 export const options = {
   scenarios: {
@@ -31,7 +32,7 @@ export const options = {
       executor: 'shared-iterations',
       vus: NUM_USERS,
       iterations: NUM_USERS,
-      maxDuration: '5m',
+      maxDuration: '10m',
       env: { METHOD: 'insert' },
       tags: { method: 'insert' },
     },
@@ -39,13 +40,13 @@ export const options = {
       executor: 'shared-iterations',
       vus: NUM_USERS,
       iterations: NUM_USERS,
-      maxDuration: '5m',
-      startTime: '6m',  // insert 방식 완료 후 시작
+      maxDuration: '10m',
+      startTime: '12m',
       env: { METHOD: 'update' },
       tags: { method: 'update' },
     },
   },
-  setupTimeout: '300s',
+  setupTimeout: '600s',
   thresholds: {
     'insert_approval_duration': ['p(95)<3000'],
     'update_approval_duration': ['p(95)<3000'],
@@ -57,26 +58,18 @@ export const options = {
 export function setup() {
   console.log(`[Setup] ${NUM_USERS * 2}명 유저 준비 중...`);
 
-  // INSERT 방식용 유저: lt301~350
+  // INSERT 방식용 유저: lt301~500
   const insertUsers = [];
   for (let i = 301; i <= 300 + NUM_USERS; i++) {
     const user = setupUser(i);
     if (user.token) insertUsers.push(user);
   }
 
-  // UPDATE 방식용 유저: lt351~400
+  // UPDATE 방식용 유저: lt501~700
   const updateUsers = [];
-  for (let i = 351; i <= 350 + NUM_USERS; i++) {
+  for (let i = 501; i <= 500 + NUM_USERS; i++) {
     const user = setupUser(i);
     if (user.token) updateUsers.push(user);
-  }
-
-  // Pre-issued 티켓 사전 발급 (UPDATE 방식용)
-  const adminToken = loginAdmin();
-  if (!adminToken) {
-    console.error('[Setup] 어드민 로그인 실패');
-  } else {
-    preIssueTickets(adminToken, EVENT_ID, NUM_USERS);
   }
 
   console.log(`[Setup] 완료 - INSERT용: ${insertUsers.length}명, UPDATE용: ${updateUsers.length}명`);
@@ -84,16 +77,17 @@ export function setup() {
 }
 
 export default function ({ insertUsers, updateUsers }) {
-  const method = __ENV.METHOD;
-  const users  = method === 'insert' ? insertUsers : updateUsers;
-  const user   = users[__VU - 1];
+  const method  = __ENV.METHOD;
+  const users   = method === 'insert' ? insertUsers : updateUsers;
+  const eventId = method === 'insert' ? INSERT_EVENT_ID : UPDATE_EVENT_ID;
+  const user    = users[__VU - 1];
 
   if (!user || !user.token) return;
 
   // 1단계: 대기열 진입
   const enterRes = http.post(
     `${BASE_URL}/api/queue/enter`,
-    JSON.stringify({ eventId: EVENT_ID, ticketCount: 1 }),
+    JSON.stringify({ eventId: eventId, ticketCount: 1 }),
     { headers: authHeaders(user.token) }
   );
 
@@ -111,7 +105,7 @@ export default function ({ insertUsers, updateUsers }) {
     sleep(POLL_INTERVAL_SEC);
 
     const statusRes = http.get(
-      `${BASE_URL}/api/queue/status/${EVENT_ID}`,
+      `${BASE_URL}/api/queue/status/${eventId}`,
       { headers: authHeaders(user.token) }
     );
 
@@ -186,3 +180,4 @@ export function teardown() {
   console.log('  update_approval_duration: UPDATE 방식 결제 승인 응답시간');
   console.log('========================================');
 }
+
