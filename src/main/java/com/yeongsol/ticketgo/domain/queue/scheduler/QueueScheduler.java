@@ -47,11 +47,17 @@ public class QueueScheduler {
                     long queueSize = queueService.getQueueSize(event.getId());
                     if (queueSize == 0) continue;
 
+                    // 큐에서 제거하지 않고 읽기만 한다 (제거는 세션 발급 성공 후)
                     List<QueueService.QueuedUser> users =
-                            queueService.dequeueNext(event.getId(), ADMIT_COUNT_PER_CYCLE);
+                            queueService.peekNext(event.getId(), ADMIT_COUNT_PER_CYCLE);
 
                     for (QueueService.QueuedUser user : users) {
-                        createBookingAndIssueSession(event.getId(), user);
+                        boolean issued = createBookingAndIssueSession(event.getId(), user);
+                        // 세션 발급에 성공한 경우에만 큐에서 제거
+                        // (실패 시 큐에 남아 다음 사이클에 재시도 → dequeue-세션 race 제거)
+                        if (issued) {
+                            queueService.removeFromQueue(event.getId(), user.memberId());
+                        }
                     }
 
                     log.info("대기열 처리 완료: eventId={}, 처리인원={}, 잔여대기={}",
@@ -69,8 +75,10 @@ public class QueueScheduler {
     /**
      * Booking 생성 후 결제 세션 발급
      * OptimisticLockException 발생 시 최대 3회 재시도
+     *
+     * @return 세션 발급 성공 여부 (true면 호출부에서 큐 제거)
      */
-    private void createBookingAndIssueSession(Long eventId, QueueService.QueuedUser user) {
+    private boolean createBookingAndIssueSession(Long eventId, QueueService.QueuedUser user) {
         for (int attempt = 1; attempt <= MAX_BOOKING_RETRY; attempt++) {
             try {
                 Booking booking = bookingService.createBooking(
@@ -82,7 +90,7 @@ public class QueueScheduler {
                 queueService.issuePaymentSession(eventId, user.memberId(), booking.getId());
                 log.info("예매 생성 및 결제 세션 발급: eventId={}, memberId={}, bookingId={}",
                         eventId, user.memberId(), booking.getId());
-                return;
+                return true;
 
             } catch (OptimisticLockException e) {
                 log.warn("재고 차감 충돌 - attempt: {}/{}, eventId={}, memberId={}",
@@ -94,8 +102,9 @@ public class QueueScheduler {
 
             } catch (Exception e) {
                 log.error("예매 생성 실패: eventId={}, memberId={}", eventId, user.memberId(), e);
-                return;
+                return false;
             }
         }
+        return false;
     }
 }

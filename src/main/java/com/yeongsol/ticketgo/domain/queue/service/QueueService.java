@@ -160,6 +160,34 @@ public class QueueService {
     }
 
     /**
+     * 대기열 상위 N명 조회 (제거하지 않음) - 스케줄러에서 호출
+     * dequeueNext와 달리 큐에서 제거하지 않는다.
+     * 세션 발급에 성공한 뒤에야 removeFromQueue로 제거함으로써,
+     * "큐에서 제거됐지만 세션은 아직 없는" 순간(NOT_IN_QUEUE 오거절)을 없앤다.
+     */
+    public List<QueuedUser> peekNext(Long eventId, int count) {
+        String queueKey = getQueueKey(eventId);
+
+        Set<ZSetOperations.TypedTuple<Object>> topUsers = redisTemplate.opsForZSet().rangeWithScores(queueKey, 0, count - 1);
+
+        if (topUsers == null || topUsers.isEmpty()) { return List.of(); }
+
+        List<QueuedUser> result = new ArrayList<>();
+        for (ZSetOperations.TypedTuple<Object> user : topUsers) {
+            String memberIdStr = (String) user.getValue();
+            if (memberIdStr == null) continue;
+
+            Long memberId = Long.parseLong(memberIdStr);
+            Object countValue = redisTemplate.opsForValue().get(getTicketCountKey(eventId, memberId));
+            int ticketCount = countValue != null ? Integer.parseInt(countValue.toString()) : 1;
+
+            result.add(new QueuedUser(memberId, ticketCount));
+        }
+
+        return result;
+    }
+
+    /**
      * 결제 세션 발급 - 예매 생성 성공 후 스케줄러에서 호출
      * bookingId를 값으로 저장해 클라이언트가 결제 페이지로 직행 가능
      */
