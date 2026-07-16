@@ -6,9 +6,11 @@ import com.yeongsol.ticketgo.domain.event.model.Event;
 import com.yeongsol.ticketgo.domain.event.model.EventStatus;
 import com.yeongsol.ticketgo.domain.event.repository.EventRepository;
 import com.yeongsol.ticketgo.domain.queue.service.QueueService;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -27,12 +29,20 @@ public class QueueScheduler {
     private final QueueService queueService;
     private final EventRepository eventRepository;
     private final BookingService bookingService;
+    private final MeterRegistry meterRegistry;   // 2차 처리량 측정용 (Prometheus)
 
-    private static final int ADMIT_COUNT_PER_CYCLE = 10; // 1회 입장시킬 최대 인원
-    private static final int MAX_BOOKING_RETRY = 3; // 낙관락 리트라이 횟수
+    // 처리율 sweep용 config (재컴파일 없이 env/properties로 조절)
+    // env 예: QUEUE_SCHEDULER_ADMIT_COUNT=50, QUEUE_SCHEDULER_DELAY_MS=1000
+    @Value("${queue.scheduler.admit-count:10}")
+    private int admitCountPerCycle;      // 1회 입장시킬 최대 인원
 
-    // 5초에 1번씩 호출
-    @Scheduled(fixedDelay = 5000, initialDelay = 5000)
+    @Value("${queue.scheduler.max-booking-retry:3}")
+    private int maxBookingRetry;         // 낙관락 리트라이 횟수
+
+    @Scheduled(
+            fixedDelayString = "${queue.scheduler.delay-ms:5000}",
+            initialDelayString = "${queue.scheduler.initial-delay-ms:5000}"
+    )
     public void processQueueAdmission() {
         try {
             // 판매 중인 이벤트 조회
@@ -49,7 +59,7 @@ public class QueueScheduler {
 
                     // 큐에서 제거하지 않고 읽기만 한다 (제거는 세션 발급 성공 후)
                     List<QueueService.QueuedUser> users =
-                            queueService.peekNext(event.getId(), ADMIT_COUNT_PER_CYCLE);
+                            queueService.peekNext(event.getId(), admitCountPerCycle);
 
                     for (QueueService.QueuedUser user : users) {
                         boolean issued = createBookingAndIssueSession(event.getId(), user);
@@ -79,7 +89,7 @@ public class QueueScheduler {
      * @return 세션 발급 성공 여부 (true면 호출부에서 큐 제거)
      */
     private boolean createBookingAndIssueSession(Long eventId, QueueService.QueuedUser user) {
-        for (int attempt = 1; attempt <= MAX_BOOKING_RETRY; attempt++) {
+        for (int attempt = 1; attempt <= maxBookingRetry; attempt++) {
             try {
                 Booking booking = bookingService.createBooking(
                         user.memberId(),
@@ -88,19 +98,23 @@ public class QueueScheduler {
                         QueueService.PAYMENT_SESSION_DURATION_SECONDS
                 );
                 queueService.issuePaymentSession(eventId, user.memberId(), booking.getId());
+                meterRegistry.counter("queue.admission.issued").increment();   // 처리량: 세션 발급 성공
                 log.info("예매 생성 및 결제 세션 발급: eventId={}, memberId={}, bookingId={}",
                         eventId, user.memberId(), booking.getId());
                 return true;
 
             } catch (OptimisticLockException e) {
+                meterRegistry.counter("queue.admission.lock_conflict").increment();  // 낙관락 충돌 = 락 발동 증거
                 log.warn("재고 차감 충돌 - attempt: {}/{}, eventId={}, memberId={}",
-                        attempt, MAX_BOOKING_RETRY, eventId, user.memberId());
-                if (attempt == MAX_BOOKING_RETRY) {
+                        attempt, maxBookingRetry, eventId, user.memberId());
+                if (attempt == maxBookingRetry) {
+                    meterRegistry.counter("queue.admission.failed").increment();     // 재시도 초과 실패
                     log.error("예매 생성 실패 (재시도 초과): eventId={}, memberId={}",
                             eventId, user.memberId());
                 }
 
             } catch (Exception e) {
+                meterRegistry.counter("queue.admission.failed").increment();         // 기타 실패
                 log.error("예매 생성 실패: eventId={}, memberId={}", eventId, user.memberId(), e);
                 return false;
             }
