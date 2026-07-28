@@ -5,7 +5,9 @@ import com.yeongsol.ticketgo.common.exception.ErrorCode;
 import com.yeongsol.ticketgo.domain.queue.dto.QueueDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +37,9 @@ public class QueueService {
 
     // 스케줄러에서 dequeueNext() 결과로 받는 사용자 정보
     public record QueuedUser(Long memberId, int ticketCount) {}
+
+    // 배치 세션 발급 대상 (memberId → 발급된 bookingId)
+    public record SessionGrant(Long memberId, Long bookingId) {}
 
     /**
      * 대기열 진입 - ticketCount 함께 저장
@@ -198,6 +203,37 @@ public class QueueService {
                 Duration.ofSeconds(PAYMENT_SESSION_DURATION_SECONDS)
         );
         log.info("결제 세션 발급: eventId={}, memberId={}, bookingId={}", eventId, memberId, bookingId);
+    }
+
+    /**
+     * 배치 세션 발급 + 큐 제거 (벌크 D단계) - Redis 파이프라이닝
+     *
+     * 기존: 유저마다 issuePaymentSession(SET) + removeFromQueue(ZREM+DEL) = 왕복 3N번.
+     * 개선: SessionCallback + executePipelined로 전체 명령을 1~2 왕복에 전송.
+     *   SessionCallback을 쓰면 RedisTemplate의 직렬화(Key=String, Value=JSON)를 그대로 사용해
+     *   getPaymentSessionBookingId 등 기존 읽기 경로와 호환된다(raw 바이트 직렬화 불일치 방지).
+     */
+    public void issueSessionsAndRemoveBatch(Long eventId, List<SessionGrant> grants) {
+        if (grants.isEmpty()) return;
+
+        String queueKey = getQueueKey(eventId);
+        redisTemplate.executePipelined(new SessionCallback<Object>() {
+            @Override
+            @SuppressWarnings("unchecked")
+            public <K, V> Object execute(RedisOperations<K, V> operations) {
+                RedisOperations<String, Object> ops = (RedisOperations<String, Object>) operations;
+                for (SessionGrant g : grants) {
+                    ops.opsForValue().set(
+                            getPaymentSessionKey(eventId, g.memberId()),
+                            g.bookingId().toString(),
+                            Duration.ofSeconds(PAYMENT_SESSION_DURATION_SECONDS));
+                    ops.opsForZSet().remove(queueKey, g.memberId().toString());
+                    ops.delete(getTicketCountKey(eventId, g.memberId()));
+                }
+                return null;
+            }
+        });
+        log.info("배치 세션 발급 완료: eventId={}, 건수={}", eventId, grants.size());
     }
 
     /**
