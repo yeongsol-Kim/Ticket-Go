@@ -1,0 +1,12 @@
+apiVersion: 1
+
+# Grafana 기동 시 Prometheus 데이터소스를 자동 등록 (수동 추가 불필요)
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    # 같은 docker-compose 네트워크 안이므로 컨테이너명으로 접근
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

@@ -1,0 +1,6 @@
+# 미리 빌드된 JAR을 amd64 JRE에 얹는 경량 배포용 (buildx 에뮬레이션 회피)
+# 사용: ./gradlew bootJar -x test 로 JAR 먼저 만든 뒤 이 파일로 빌드
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY build/libs/ticketgo-0.0.1-SNAPSHOT.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]

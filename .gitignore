@@ -48,3 +48,6 @@ logs/
 ### macOS ###
 .DS_Store
 **/.DS_Store
+
+# 부하테스트 토큰 (JWT - 커밋 금지)
+load-test/tokens.json

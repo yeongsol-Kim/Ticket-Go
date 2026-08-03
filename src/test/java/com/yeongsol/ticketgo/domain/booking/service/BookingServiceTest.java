@@ -251,8 +251,6 @@ class BookingServiceTest {
             Booking mockBooking = createMockBooking(bookingId, 1L, eventId, "booking-number");
             setBookingTicketCount(mockBooking, ticketCount);
 
-            Event mockEvent = createMockEvent(eventId, 98, 50000); // 예약으로 2장 차감된 상태
-
             List<Ticket> mockTickets = List.of(
                     createMockTicket(1L, eventId, bookingId),
                     createMockTicket(2L, eventId, bookingId)
@@ -260,18 +258,17 @@ class BookingServiceTest {
 
             given(bookingRepository.findById(bookingId)).willReturn(Optional.of(mockBooking));
             given(ticketRepository.findByBookingId(bookingId)).willReturn(mockTickets);
-            given(eventRepository.findById(eventId)).willReturn(Optional.of(mockEvent));
 
             // When
             bookingService.cancelBooking(bookingId);
 
             // Then
             assertThat(mockBooking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
-            assertThat(mockEvent.getAvailableTickets()).isEqualTo(100); // 98 + 2 복구
+            // 재고 복원은 원자적 벌크 UPDATE로 수행 (엔티티 변경 아님)
+            then(eventRepository).should(times(1)).increaseStock(eventId, ticketCount);
 
             then(bookingRepository).should(times(1)).findById(bookingId);
             then(ticketRepository).should(times(1)).findByBookingId(bookingId);
-            then(eventRepository).should(times(1)).findById(eventId);
         }
 
         @Test
@@ -309,8 +306,6 @@ class BookingServiceTest {
 
             List<Booking> expiredBookings = List.of(expiredBooking1, expiredBooking2);
 
-            Event mockEvent = createMockEvent(1L, 95, 50000);
-
             given(bookingRepository.findExpiredBookings(eq(BookingStatus.RESERVED), any(LocalDateTime.class)))
                     .willReturn(expiredBookings);
             given(ticketRepository.findByBookingId(1L)).willReturn(List.of(
@@ -322,7 +317,6 @@ class BookingServiceTest {
                     createMockTicket(4L, 1L, 2L),
                     createMockTicket(5L, 1L, 2L)
             ));
-            given(eventRepository.findById(1L)).willReturn(Optional.of(mockEvent));
 
             // When
             bookingService.expireBookings();
@@ -330,7 +324,9 @@ class BookingServiceTest {
             // Then
             assertThat(expiredBooking1.getStatus()).isEqualTo(BookingStatus.EXPIRED);
             assertThat(expiredBooking2.getStatus()).isEqualTo(BookingStatus.EXPIRED);
-            assertThat(mockEvent.getAvailableTickets()).isEqualTo(100); // 95 + 2 + 3 복구
+            // 재고 복원은 원자적 벌크 UPDATE로 각 예약분(2장, 3장) 수행
+            then(eventRepository).should(times(1)).increaseStock(1L, 2);
+            then(eventRepository).should(times(1)).increaseStock(1L, 3);
 
             then(bookingRepository).should(times(1))
                     .findExpiredBookings(eq(BookingStatus.RESERVED), any(LocalDateTime.class));

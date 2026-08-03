@@ -7,14 +7,17 @@ import com.yeongsol.ticketgo.domain.booking.repository.BookingRepository;
 import com.yeongsol.ticketgo.domain.event.exception.EventNotFoundException;
 import com.yeongsol.ticketgo.domain.event.model.Event;
 import com.yeongsol.ticketgo.domain.event.repository.EventRepository;
+import com.yeongsol.ticketgo.domain.queue.service.QueueService;
 import com.yeongsol.ticketgo.domain.ticket.model.Ticket;
 import com.yeongsol.ticketgo.domain.ticket.repository.TicketRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -62,6 +65,66 @@ public class BookingService {
     }
 
     /**
+     * 대기열 배치 입장 - 여러 유저의 예약을 트랜잭션 1개로 생성 (벌크 A단계)
+     *
+     * 기존: 유저마다 createBooking()이 각자 @Transactional → 커밋 N번, event SELECT/UPDATE N번.
+     * 개선: 배치 전체를 트랜잭션 1개로 묶어 event를 한 번만 로드·공유.
+     *   → 커밋 1번, event UPDATE는 dirty checking으로 1번(마지막 재고값)으로 합쳐짐.
+     *   → booking INSERT는 아직 건별(IDENTITY 때문, C단계에서 처리).
+     *
+     * 재고 소진 처리: 큐 순서대로 차감하다 재고가 부족해지면 그 지점에서 중단(break).
+     *   decreaseAvailableTickets는 차감 전 in-memory 가드라 예외 시 DB 미변경 → 트랜잭션 안전.
+     *   앞선 성공분은 유지, 나머지 유저는 큐에 남아 다음 사이클 처리(재고 0이면 자연히 탈락).
+     *
+     * @return 생성된 Booking 목록 (각 Booking에 memberId·id 포함 → 호출부가 세션 발급/큐 제거에 사용)
+     */
+    @Transactional
+    public List<Booking> createBookingsBatch(Long eventId, List<QueueService.QueuedUser> users, long timeoutSeconds) {
+        if (users.isEmpty()) return List.of();
+
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(EventNotFoundException::new);
+        int price = event.getPrice().intValue();
+        int available = event.getAvailableTickets();
+
+        // 재고에 맞춰 처리할 유저를 큐 순서대로 선별 (경계 안전: 재고 60인데 200명이면 60명분만)
+        List<QueueService.QueuedUser> toServe = new ArrayList<>();
+        int need = 0;
+        for (QueueService.QueuedUser user : users) {
+            if (need + user.ticketCount() > available) break;
+            need += user.ticketCount();
+            toServe.add(user);
+        }
+        if (need == 0) {
+            log.info("배치 재고 소진 - eventId={}, available={}", eventId, available);
+            return List.of();
+        }
+
+        // ── B: 원자적 조건부 재고 차감 (오버부킹을 DB가 막음, @Version 불필요)
+        int affected = eventRepository.decreaseStock(eventId, need);
+        if (affected == 0) {
+            // 로드 이후 재고가 변함(취소/만료 복원 등) → 배치 전체 재시도 유도
+            throw new ObjectOptimisticLockingFailureException(Event.class, eventId);
+        }
+
+        List<Booking> created = new ArrayList<>(toServe.size());
+        for (QueueService.QueuedUser user : toServe) {
+            Booking booking = Booking.builder()
+                    .memberId(user.memberId())
+                    .eventId(eventId)
+                    .bookingNumber(UUID.randomUUID().toString())
+                    .ticketCount(user.ticketCount())
+                    .totalAmount(price * user.ticketCount())
+                    .timeoutSeconds(timeoutSeconds)
+                    .build();
+
+            created.add(bookingRepository.save(booking));
+        }
+
+        return created;
+    }
+
+    /**
      * 예약 번호로 조회
      */
     public Booking findByBookingNumber(String bookingNumber) {
@@ -101,10 +164,8 @@ public class BookingService {
         List<Ticket> tickets = ticketRepository.findByBookingId(bookingId);
         tickets.forEach(Ticket::cancel);
 
-        // Event 재고 복구
-        Event event = eventRepository.findById(booking.getEventId())
-                .orElseThrow(EventNotFoundException::new);
-        event.increaseAvailableTickets(booking.getTicketCount());
+        // Event 재고 복구 - 원자적 UPDATE (차감 배치와 lost update 없이 행 락으로 직렬화)
+        eventRepository.increaseStock(booking.getEventId(), booking.getTicketCount());
 
         log.info("예약 취소 완료 - bookingId: {}, 복구된 티켓 수: {}",
                 bookingId, booking.getTicketCount());
@@ -133,10 +194,8 @@ public class BookingService {
                 List<Ticket> tickets = ticketRepository.findByBookingId(booking.getId());
                 tickets.forEach(Ticket::cancel);
 
-                // Event 재고 복구
-                Event event = eventRepository.findById(booking.getEventId())
-                        .orElseThrow(EventNotFoundException::new);
-                event.increaseAvailableTickets(booking.getTicketCount());
+                // Event 재고 복구 - 원자적 UPDATE (차감 배치와 lost update 없이 행 락으로 직렬화)
+                eventRepository.increaseStock(booking.getEventId(), booking.getTicketCount());
 
                 log.info("만료 예약 처리 완료 - bookingId: {}, 복구된 티켓 수: {}",
                         booking.getId(), booking.getTicketCount());
