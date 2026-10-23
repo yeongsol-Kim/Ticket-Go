@@ -35,6 +35,7 @@ public class QueueDto {
         private Boolean isActive;
         private Long remainingSeconds;
         private Long bookingId;     // 결제 세션 발급 시 생성된 bookingId
+        private Integer nextPollSeconds;  // 다음 폴링까지 권장 대기(초), 대기 중일 때만
     }
 
     @Getter
@@ -46,5 +47,6 @@ public class QueueDto {
         private Long memberId;
         private Integer position;
         private Long timestamp;
+        private Integer nextPollSeconds;  // 첫 폴링까지 권장 대기(초)
     }
 }

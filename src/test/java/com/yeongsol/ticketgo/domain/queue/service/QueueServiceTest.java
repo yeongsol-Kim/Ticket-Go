@@ -50,6 +50,9 @@ class QueueServiceTest {
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
+    @Mock
+    private AdaptivePollingPolicy pollingPolicy;
+
     @InjectMocks
     private QueueService queueService;
 
@@ -137,8 +140,10 @@ class QueueServiceTest {
             Long eventId = 1L;
             Long memberId = 1L;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(true);
-            given(redisTemplate.getExpire("active:" + eventId + ":" + memberId)).willReturn(300L);
+            given(zSetOperations.rank("queue:" + eventId, memberId.toString())).willReturn(null);
+            given(redisTemplate.hasKey("payment_session:" + eventId + ":" + memberId)).willReturn(true);
+            given(redisTemplate.getExpire("payment_session:" + eventId + ":" + memberId)).willReturn(300L);
+            given(valueOperations.get("payment_session:" + eventId + ":" + memberId)).willReturn("77");
 
             // When
             QueueDto.StatusResponse result = queueService.getQueueStatus(eventId, memberId);
@@ -147,6 +152,24 @@ class QueueServiceTest {
             assertThat(result.getIsActive()).isTrue();
             assertThat(result.getPosition()).isNull();
             assertThat(result.getRemainingSeconds()).isEqualTo(300L);
+            assertThat(result.getBookingId()).isEqualTo(77L);
+        }
+
+        @Test
+        @DisplayName("상태 조회 - 대기 중이면 결제 세션은 조회하지 않는다 (순번 먼저 → 세션 race 제거)")
+        void getQueueStatus_waiting_doesNotCheckSession() {
+            // Given
+            Long eventId = 1L;
+            Long memberId = 1L;
+
+            given(zSetOperations.rank("queue:" + eventId, memberId.toString())).willReturn(10L);
+            given(zSetOperations.zCard("queue:" + eventId)).willReturn(50L);
+
+            // When
+            queueService.getQueueStatus(eventId, memberId);
+
+            // Then
+            then(redisTemplate).should(times(0)).hasKey(anyString());
         }
 
         @Test
@@ -156,9 +179,9 @@ class QueueServiceTest {
             Long eventId = 1L;
             Long memberId = 1L;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(false);
             given(zSetOperations.rank("queue:" + eventId, memberId.toString())).willReturn(10L);
             given(zSetOperations.zCard("queue:" + eventId)).willReturn(50L);
+            given(pollingPolicy.nextPollSeconds(eventId, 11)).willReturn(4);
 
             // When
             QueueDto.StatusResponse result = queueService.getQueueStatus(eventId, memberId);
@@ -167,6 +190,7 @@ class QueueServiceTest {
             assertThat(result.getIsActive()).isFalse();
             assertThat(result.getPosition()).isEqualTo(11); // rank 10 + 1
             assertThat(result.getTotalWaiting()).isEqualTo(50L);
+            assertThat(result.getNextPollSeconds()).isEqualTo(4);
         }
 
         @Test
@@ -176,8 +200,8 @@ class QueueServiceTest {
             Long eventId = 1L;
             Long memberId = 1L;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(false);
             given(zSetOperations.rank("queue:" + eventId, memberId.toString())).willReturn(null);
+            given(redisTemplate.hasKey("payment_session:" + eventId + ":" + memberId)).willReturn(false);
 
             // When & Then
             assertThatThrownBy(() -> queueService.getQueueStatus(eventId, memberId))

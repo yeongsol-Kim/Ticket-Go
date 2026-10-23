@@ -5,6 +5,7 @@ import com.yeongsol.ticketgo.domain.booking.service.BookingService;
 import com.yeongsol.ticketgo.domain.event.model.Event;
 import com.yeongsol.ticketgo.domain.event.model.EventStatus;
 import com.yeongsol.ticketgo.domain.event.repository.EventRepository;
+import com.yeongsol.ticketgo.domain.queue.service.AdaptivePollingPolicy;
 import com.yeongsol.ticketgo.domain.queue.service.QueueService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class QueueScheduler {
     private final EventRepository eventRepository;
     private final BookingService bookingService;
     private final MeterRegistry meterRegistry;   // 2차 처리량 측정용 (Prometheus)
+    private final AdaptivePollingPolicy pollingPolicy;  // 입장 속도 기록 → 폴링 간격 산정
 
     // 처리율 sweep용 config (재컴파일 없이 env/properties로 조절)
     // env 예: QUEUE_SCHEDULER_ADMIT_COUNT=50, QUEUE_SCHEDULER_DELAY_MS=1000
@@ -63,6 +65,7 @@ public class QueueScheduler {
 
                     // ── A: 배치 전체를 트랜잭션 1개로 생성 (커밋 N→1, event UPDATE N→1)
                     List<Booking> bookings = createBookingsBatchWithRetry(event.getId(), users);
+                    pollingPolicy.record(event.getId(), bookings.size());
 
                     // ── D: 커밋 성공분의 세션 발급 + 큐 제거를 Redis 파이프라인으로 (왕복 3N→~2)
                     // (실패 시 큐에 남아 다음 사이클 재시도 → dequeue-세션 race 제거)

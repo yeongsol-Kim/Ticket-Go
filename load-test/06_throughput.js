@@ -31,6 +31,8 @@ const EVENT_ID = parseInt(__ENV.EVENT_ID || '3');
 const STOCK = parseInt(__ENV.STOCK || '1000');            // 오버부킹 판정 기준
 const MAX_WAIT_SECONDS = parseInt(__ENV.MAX_WAIT_SECONDS || '180');
 const POLL_INTERVAL_SEC = parseFloat(__ENV.POLL_INTERVAL_SEC || '2');
+// fixed: POLL_INTERVAL_SEC 고정 간격 / adaptive: 서버 응답의 nextPollSeconds만큼 쉰다 (3차 적응형 폴링)
+const POLL_MODE = __ENV.POLL_MODE || 'fixed';
 
 // tokens.json을 VU 전체가 공유 (복사본이 VU마다 생기지 않음 = 메모리 절약)
 const tokens = new SharedArray('tokens', function () {
@@ -103,9 +105,10 @@ export default function () {
   // 2단계: 결제 세션 발급 대기 (스케줄러가 처리해줄 때까지 폴링)
   let bookingId = null;
   const deadline = Date.now() + MAX_WAIT_SECONDS * 1000;
+  let pollWait = nextPollWait(enterRes);
 
   while (Date.now() < deadline) {
-    sleep(POLL_INTERVAL_SEC);
+    sleep(pollWait);
 
     const statusRes = http.get(`${BASE_URL}/api/queue/status/${EVENT_ID}`, { headers });
 
@@ -120,6 +123,7 @@ export default function () {
       bookingId = status.bookingId;
       break;
     }
+    pollWait = nextPollWait(statusRes);
   }
 
   if (!bookingId) {
@@ -173,4 +177,15 @@ export function teardown() {
   console.log('  3) Grafana: queue_admission_lock_conflict 가 증가했는가? (@Version 발동 지점)');
   console.log('  4) Grafana: hikaricp_connections_pending 이 쌓였는가? (DB풀 병목)');
   console.log('  5) EC2 DB 검증: SELECT available_tickets FROM events WHERE id=' + EVENT_ID + ';  (음수면 오버부킹)');
+}
+
+// 다음 폴링까지 쉴 시간(초). adaptive 모드에서 서버가 값을 안 주면 고정 간격으로 대체
+function nextPollWait(res) {
+  if (POLL_MODE !== 'adaptive') return POLL_INTERVAL_SEC;
+  try {
+    const sec = JSON.parse(res.body).nextPollSeconds;
+    return sec > 0 ? sec : POLL_INTERVAL_SEC;
+  } catch (e) {
+    return POLL_INTERVAL_SEC;
+  }
 }

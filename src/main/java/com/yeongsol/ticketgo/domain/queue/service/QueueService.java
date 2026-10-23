@@ -28,6 +28,7 @@ import java.util.Set;
 public class QueueService {
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final AdaptivePollingPolicy pollingPolicy;
 
     private static final String QUEUE_KEY_PREFIX = "queue:";
     private static final String QUEUE_TICKET_COUNT_KEY_PREFIX = "queue_ticket_count:";
@@ -60,11 +61,13 @@ public class QueueService {
         Double existingScore = redisTemplate.opsForZSet().score(queueKey, memberId.toString());
         if (existingScore != null) {
             Long rank = redisTemplate.opsForZSet().rank(queueKey, memberId.toString());
+            int position = rank != null ? rank.intValue() + 1 : 0;
             return QueueDto.EnterResponse.builder()
                     .eventId(eventId)
                     .memberId(memberId)
-                    .position(rank != null ? rank.intValue() + 1 : 0)
+                    .position(position)
                     .timestamp(existingScore.longValue())
+                    .nextPollSeconds(pollingPolicy.nextPollSeconds(eventId, position))
                     .build();
         }
 
@@ -91,44 +94,51 @@ public class QueueService {
                 .memberId(memberId)
                 .position(position)
                 .timestamp(timestamp)
+                .nextPollSeconds(pollingPolicy.nextPollSeconds(eventId, position))
                 .build();
     }
 
     /**
      * 대기열 상태 조회
+     *
+     * 순번을 먼저 보고, 큐에 없을 때만 결제 세션을 본다.
+     * 세션 먼저 → 순번 순으로 읽으면, 그 사이에 스케줄러가 "세션 SET → 큐 제거"를 끝낸 경우
+     * 둘 다 없어 보여 입장한 사람에게 NOT_IN_QUEUE를 준다 (3차 부하테스트 실패 전부가 이 경우).
+     * 파이프라인이 세션 SET을 큐 제거보다 먼저 보내므로, 큐에 없다면 세션은 이미 있다.
      */
     public QueueDto.StatusResponse getQueueStatus(Long eventId, Long memberId) {
         String queueKey = getQueueKey(eventId);
 
-        // 결제 세션 보유 시 bookingId와 남은 시간 반환
-        if (hasPaymentSession(eventId, memberId)) {
-            Long ttl = redisTemplate.getExpire(getPaymentSessionKey(eventId, memberId));
-            Long bookingId = getPaymentSessionBookingId(eventId, memberId);
-            return QueueDto.StatusResponse.builder()
-                    .eventId(eventId)
-                    .memberId(memberId)
-                    .isActive(true)
-                    .remainingSeconds(ttl != null ? ttl : 0L)
-                    .bookingId(bookingId)
-                    .build();
-        }
-
         // 대기열 순번 확인
         Long rank = redisTemplate.opsForZSet().rank(queueKey, memberId.toString());
         if (rank == null) {
+            // 결제 세션 보유 시 bookingId와 남은 시간 반환
+            if (hasPaymentSession(eventId, memberId)) {
+                Long ttl = redisTemplate.getExpire(getPaymentSessionKey(eventId, memberId));
+                Long bookingId = getPaymentSessionBookingId(eventId, memberId);
+                return QueueDto.StatusResponse.builder()
+                        .eventId(eventId)
+                        .memberId(memberId)
+                        .isActive(true)
+                        .remainingSeconds(ttl != null ? ttl : 0L)
+                        .bookingId(bookingId)
+                        .build();
+            }
             throw new BusinessException(ErrorCode.NOT_IN_QUEUE);
         }
 
         Long totalWaiting = redisTemplate.opsForZSet().zCard(queueKey);
+        int position = rank.intValue() + 1;
 
         return QueueDto.StatusResponse.builder()
                 .eventId(eventId)
                 .memberId(memberId)
-                .position(rank.intValue() + 1)
+                .position(position)
                 .totalWaiting(totalWaiting != null ? totalWaiting : 0L)
                 .isActive(false)
                 .remainingSeconds(null)
                 .bookingId(null)
+                .nextPollSeconds(pollingPolicy.nextPollSeconds(eventId, position))
                 .build();
     }
 
