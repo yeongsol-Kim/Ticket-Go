@@ -11,7 +11,7 @@
 #      ※ EventScheduler.completeExpiredEvents()가 기동 시마다 실행되어
 #        start_date_time이 과거인 이벤트를 COMPLETED로 바꿔버림.
 #        공연일시를 미래로 두어야 재시작해도 ON_SALE이 유지된다.
-#   3) Redis - FLUSHDB (대기열/결제세션 잔여물 제거)
+#   0) Redis - FLUSHDB (대기열/결제세션 잔여물 제거, 재고 리셋보다 먼저)
 #
 # 사용법:
 #   ./load-test/reset_ec2.sh              # 기본: 이벤트 3,4 재고 1000
@@ -36,6 +36,11 @@ ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 "$EC2_USER@$EC2_HOST" \
 set -euo pipefail
 MYSQL="docker exec ticketgo-mysql mysql -uroot -pticketgo1234 ticket_go -N -B"
 REDIS="docker exec ticketgo-redis redis-cli"
+
+# Redis를 먼저 비운다: 이전 회차에 매진으로 큐에 남은 사람이 있으면, 재고를 되살린 순간
+# 스케줄러가 그들을 입장시켜 새 회차 재고를 먹는다 (3차 실측: 매 회차 시작 시 1배치=32건 유령 예매)
+echo "--- 0) Redis FLUSHDB (대기열 잔여 제거 - 재고 리셋보다 먼저) ---"
+$REDIS FLUSHDB 2>/dev/null
 
 echo "--- 1) 예매 데이터 삭제 ---"
 # FK 순서: payments -> tickets -> bookings
@@ -64,8 +69,6 @@ WHERE id IN (${EVENT_IDS});
 " 2>/dev/null
 echo "리셋 완료"
 
-echo "--- 3) Redis FLUSHDB ---"
-$REDIS FLUSHDB 2>/dev/null
 
 echo ""
 echo "--- 검증 ---"
