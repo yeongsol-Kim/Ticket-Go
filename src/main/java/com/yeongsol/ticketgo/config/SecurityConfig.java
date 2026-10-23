@@ -33,9 +33,11 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                // 화면·API 모두 JWT(헤더 또는 ACCESS_TOKEN 쿠키)로 매 요청 인증하므로 서버 세션 불필요.
+                // IF_REQUIRED면 인증 정보를 요청마다 세션에 저장해, 쿠키 없는 클라이언트 요청 1건당 세션 1개가 30분간 힙에 남는다.
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Thymeleaf view endpoints (session-based)
+                        // Thymeleaf view endpoints
                         .requestMatchers(
                                 "/",
                                 "/login",
