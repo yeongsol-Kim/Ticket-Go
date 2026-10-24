@@ -33,6 +33,8 @@ const MAX_WAIT_SECONDS = parseInt(__ENV.MAX_WAIT_SECONDS || '180');
 const POLL_INTERVAL_SEC = parseFloat(__ENV.POLL_INTERVAL_SEC || '2');
 // fixed: POLL_INTERVAL_SEC 고정 간격 / adaptive: 서버 응답의 nextPollSeconds만큼 쉰다 (3차 적응형 폴링)
 const POLL_MODE = __ENV.POLL_MODE || 'fixed';
+// RAW_LOG=1이면 승인 1건마다 "RAW approval_ms=..." 한 줄을 로그로 남긴다 (분산 실행 시 합산 p95용)
+const RAW_LOG = __ENV.RAW_LOG === '1';
 
 // tokens.json을 VU 전체가 공유 (복사본이 VU마다 생기지 않음 = 메모리 절약)
 const tokens = new SharedArray('tokens', function () {
@@ -158,7 +160,10 @@ export default function () {
     JSON.stringify({ paymentKey: `k6-vu${__VU}-${Date.now()}` }),
     { headers }
   );
-  approvalDuration.add(Date.now() - approveStart);
+  const approvalMs = Date.now() - approveStart;
+  approvalDuration.add(approvalMs);
+  // 부하생성기 여러 대의 p95를 합산하려면 원자료가 필요 (p95끼리는 합칠 수 없다)
+  if (RAW_LOG) console.log(`RAW approval_ms=${approvalMs} enter_ms=${t0} end_ms=${approveStart + approvalMs} status=${approveRes.status}`);
 
   const ok = check(approveRes, { '결제 승인 200': (r) => r.status === 200 });
   flowSuccess.add(ok);
