@@ -63,6 +63,7 @@ public class AdaptivePollingPolicy {
 
     private final Map<Long, Deque<long[]>> admissions = new ConcurrentHashMap<>();  // eventId → [시각ms, 인원]
     private final Map<Long, Double> rates = new ConcurrentHashMap<>();             // eventId → 최근 입장 속도(명/초)
+    private final Map<Long, Long> admissionStartsAt = new ConcurrentHashMap<>();   // eventId → 입장 시작 시각(ms), 시작 지연 중일 때만
 
     /**
      * 스케줄러가 사이클마다 호출 (스케줄러 스레드 1개라 쓰기 경합 없음, 읽기는 rates만)
@@ -89,11 +90,37 @@ public class AdaptivePollingPolicy {
     }
 
     public int nextPollSeconds(Long eventId, int position) {
-        double rate = Math.max(rates.getOrDefault(eventId, fallbackRate), minRate);
-        if (rate <= 0) return maxSeconds;
-        double expectedWait = position / rate;
+        double expectedWait = expectedWaitSeconds(eventId, position);
+        if (Double.isInfinite(expectedWait)) return maxSeconds;
         double seconds = expectedWait * ratioFor(expectedWait);
         return (int) Math.max(minSeconds, Math.min(maxSeconds, Math.round(seconds)));
+    }
+
+    /**
+     * 예상 대기(초) = 남은 입장 시작 지연 + 순번 ÷ max(최근 입장 속도, 하한). 속도가 0이면 무한대
+     */
+    public double expectedWaitSeconds(Long eventId, int position) {
+        return expectedWaitSeconds(eventId, position, System.currentTimeMillis());
+    }
+
+    double expectedWaitSeconds(Long eventId, int position, long nowMs) {
+        double rate = Math.max(rates.getOrDefault(eventId, fallbackRate), minRate);
+        if (rate <= 0) return Double.POSITIVE_INFINITY;
+        Long startsAt = admissionStartsAt.get(eventId);
+        double gateRemaining = startsAt != null ? Math.max(0, startsAt - nowMs) / 1000.0 : 0;
+        return gateRemaining + position / rate;
+    }
+
+    /**
+     * 스케줄러가 입장 시작 지연을 걸 때 호출 - 지연 중엔 아무도 입장하지 않으므로 예상 대기에 남은 지연을 더한다
+     * (안 더하면 앞 순번이 "곧 입장"으로 계산돼 진입 폭주 한가운데 SSE로 갈아타거나 자주 폴링한다)
+     */
+    public void markAdmissionStart(Long eventId, long startAtMs) {
+        admissionStartsAt.put(eventId, startAtMs);
+    }
+
+    public void clearAdmissionStart(Long eventId) {
+        admissionStartsAt.remove(eventId);
     }
 
     private double ratioFor(double expectedWait) {

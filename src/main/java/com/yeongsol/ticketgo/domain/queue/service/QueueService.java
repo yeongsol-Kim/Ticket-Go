@@ -29,6 +29,7 @@ public class QueueService {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final AdaptivePollingPolicy pollingPolicy;
+    private final QueueStreamPolicy streamPolicy;
 
     private static final String QUEUE_KEY_PREFIX = "queue:";
     private static final String QUEUE_TICKET_COUNT_KEY_PREFIX = "queue_ticket_count:";
@@ -68,6 +69,7 @@ public class QueueService {
                     .position(position)
                     .timestamp(existingScore.longValue())
                     .nextPollSeconds(pollingPolicy.nextPollSeconds(eventId, position))
+                    .streamRecommended(streamPolicy.shouldStream(eventId, position))
                     .build();
         }
 
@@ -95,6 +97,7 @@ public class QueueService {
                 .position(position)
                 .timestamp(timestamp)
                 .nextPollSeconds(pollingPolicy.nextPollSeconds(eventId, position))
+                .streamRecommended(streamPolicy.shouldStream(eventId, position))
                 .build();
     }
 
@@ -139,6 +142,7 @@ public class QueueService {
                 .remainingSeconds(null)
                 .bookingId(null)
                 .nextPollSeconds(pollingPolicy.nextPollSeconds(eventId, position))
+                .streamRecommended(streamPolicy.shouldStream(eventId, position))
                 .build();
     }
 

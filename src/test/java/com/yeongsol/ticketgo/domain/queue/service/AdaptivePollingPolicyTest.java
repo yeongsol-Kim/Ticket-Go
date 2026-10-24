@@ -132,4 +132,26 @@ class AdaptivePollingPolicyTest {
         ReflectionTestUtils.setField(policy, "ratioFar", 0.8);
         ReflectionTestUtils.setField(policy, "maxSeconds", 150);
     }
+
+    @Test
+    @DisplayName("예상 대기 = 순번 ÷ max(실측 속도, 하한) (하이브리드 전환 판단에 쓰임)")
+    void expectedWaitSeconds_usesRateWithFloor() {
+        ReflectionTestUtils.setField(policy, "minRate", 85.0);
+
+        // 기록 없음 → fallback 100명/초
+        assertThat(policy.expectedWaitSeconds(1L, 850)).isEqualTo(8.5);
+    }
+
+    @Test
+    @DisplayName("입장 시작 지연 중엔 예상 대기에 남은 지연을 더하고, 해제하면 뺀다")
+    void expectedWaitSeconds_addsRemainingAdmissionDelay() {
+        long now = 1_000_000L;
+        policy.markAdmissionStart(1L, now + 7_000);   // 7초 뒤 입장 시작
+
+        assertThat(policy.expectedWaitSeconds(1L, 100, now)).isEqualTo(8.0);   // 7 + 100/100
+        assertThat(policy.expectedWaitSeconds(1L, 100, now + 10_000)).isEqualTo(1.0);   // 지연 끝남
+
+        policy.clearAdmissionStart(1L);
+        assertThat(policy.expectedWaitSeconds(1L, 100, now)).isEqualTo(1.0);
+    }
 }

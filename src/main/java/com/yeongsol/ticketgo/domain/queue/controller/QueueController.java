@@ -2,14 +2,18 @@ package com.yeongsol.ticketgo.domain.queue.controller;
 
 import com.yeongsol.ticketgo.config.security.JwtTokenProvider;
 import com.yeongsol.ticketgo.domain.queue.dto.QueueDto;
+import com.yeongsol.ticketgo.domain.queue.service.QueueNotifier;
 import com.yeongsol.ticketgo.domain.queue.service.QueueService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 대기열 컨트롤러
@@ -21,7 +25,11 @@ import org.springframework.web.bind.annotation.*;
 public class QueueController {
 
     private final QueueService queueService;
+    private final QueueNotifier queueNotifier;
     private final JwtTokenProvider jwtTokenProvider;
+
+    @Value("${queue.sse.timeout-ms:300000}")
+    private long sseTimeoutMs;   // 끝나면 클라이언트가 재연결 (재연결 시 현재 상태를 다시 받는다)
 
     /**
      * 대기열 진입
@@ -57,6 +65,26 @@ public class QueueController {
         Long memberId = getMemberIdFromToken(httpRequest);
         QueueDto.StatusResponse response = queueService.getQueueStatus(eventId, memberId);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 대기열 입장 알림 구독 (SSE)
+     */
+    @Operation(
+            summary = "대기열 입장 알림 구독 (SSE)",
+            description = "연결 직후 현재 상태(status)를 1회 보내고, 결제 세션이 발급되면 admitted 이벤트를 보낸 뒤 닫습니다. "
+                    + "대기열에 없으면 not-in-queue 후 닫습니다",
+            security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    @GetMapping(value = "/stream/{eventId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamQueue(
+            @PathVariable Long eventId,
+            HttpServletRequest httpRequest
+    ) {
+        Long memberId = getMemberIdFromToken(httpRequest);
+        SseEmitter emitter = new SseEmitter(sseTimeoutMs);
+        queueNotifier.subscribe(eventId, memberId, emitter);
+        return emitter;
     }
 
     /**

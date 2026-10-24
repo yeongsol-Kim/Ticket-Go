@@ -6,6 +6,7 @@ import com.yeongsol.ticketgo.domain.event.model.Event;
 import com.yeongsol.ticketgo.domain.event.model.EventStatus;
 import com.yeongsol.ticketgo.domain.event.repository.EventRepository;
 import com.yeongsol.ticketgo.domain.queue.service.AdaptivePollingPolicy;
+import com.yeongsol.ticketgo.domain.queue.service.QueueNotifier;
 import com.yeongsol.ticketgo.domain.queue.service.QueueService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 대기열 스케줄러
@@ -32,6 +35,7 @@ public class QueueScheduler {
     private final BookingService bookingService;
     private final MeterRegistry meterRegistry;   // 2차 처리량 측정용 (Prometheus)
     private final AdaptivePollingPolicy pollingPolicy;  // 입장 속도 기록 → 폴링 간격 산정
+    private final QueueNotifier queueNotifier;          // SSE 구독자에게 입장 알림
 
     // 처리율 sweep용 config (재컴파일 없이 env/properties로 조절)
     // env 예: QUEUE_SCHEDULER_ADMIT_COUNT=50, QUEUE_SCHEDULER_DELAY_MS=1000
@@ -41,6 +45,16 @@ public class QueueScheduler {
 
     @Value("${queue.scheduler.max-booking-retry:3}")
     private int maxBookingRetry;         // 낙관락 리트라이 횟수
+
+    // 입장 시작 지연: 대기열이 열린 뒤(첫 진입 발견) N ms 동안은 줄만 세우고 입장시키지 않는다.
+    // 4차 실측: 1초 넘는 승인은 전부 시작 10~20초, 1만 명 진입 요청으로 CPU 100%인 구간에 결제한 사람들이었다.
+    // 조금씩 넣으면 그 사람들이 여전히 폭주 중에 결제하므로 아예 막는다. 풀린 뒤엔 admit-count 상한 속도로
+    // 들어가므로 결제가 한꺼번에 몰리지 않는다. 0이면 끔.
+    // 기본 15초 = 4차 실측(1만 동시): 1초 넘는 승인 0명, p95 ~190ms, 완주 ~110초 (지연 0이면 p95 0.9~1.7초)
+    @Value("${queue.scheduler.admission-start-delay-ms:15000}")
+    private long admissionStartDelayMs;
+
+    private final Map<Long, Long> queueOpenedAt = new ConcurrentHashMap<>();   // eventId → 대기열 오픈(첫 진입 발견) 시각
 
     @Scheduled(
             fixedDelayString = "${queue.scheduler.delay-ms:200}",
@@ -58,7 +72,12 @@ public class QueueScheduler {
                     if (event.getAvailableTickets() == 0) continue;
 
                     long queueSize = queueService.getQueueSize(event.getId());
-                    if (queueSize == 0) continue;
+                    if (queueSize == 0) {
+                        // 대기열이 비면 오픈 시각을 지운다 (다음 판매·다음 회차는 다시 처음부터 지연)
+                        if (queueOpenedAt.remove(event.getId()) != null) pollingPolicy.clearAdmissionStart(event.getId());
+                        continue;
+                    }
+                    if (inAdmissionStartDelay(event.getId(), System.currentTimeMillis())) continue;
 
                     // 큐에서 제거하지 않고 읽기만 한다 (제거는 세션 발급 성공 후)
                     List<QueueService.QueuedUser> users =
@@ -75,6 +94,8 @@ public class QueueScheduler {
                                 .map(b -> new QueueService.SessionGrant(b.getMemberId(), b.getId()))
                                 .toList();
                         queueService.issueSessionsAndRemoveBatch(event.getId(), grants);
+                        // 세션이 Redis에 생긴 뒤에 알린다 (알림 받고 바로 결제해도 세션이 있다)
+                        queueNotifier.notifyAdmitted(event.getId(), grants);
                     }
 
                     log.info("대기열 처리 완료: eventId={}, 처리인원={}, 잔여대기={}",
@@ -87,6 +108,19 @@ public class QueueScheduler {
         } catch (Exception e) {
             log.error("대기열 스케줄러 실행 중 오류", e);
         }
+    }
+
+    /**
+     * 대기열이 열린 뒤 admission-start-delay-ms가 아직 안 지났으면 true (입장 보류)
+     */
+    private boolean inAdmissionStartDelay(Long eventId, long nowMs) {
+        if (admissionStartDelayMs <= 0) return false;
+        long openedAt = queueOpenedAt.computeIfAbsent(eventId, id -> {
+            pollingPolicy.markAdmissionStart(id, nowMs + admissionStartDelayMs);
+            log.info("대기열 오픈 감지: eventId={}, {}ms 동안 입장 보류", id, admissionStartDelayMs);
+            return nowMs;
+        });
+        return nowMs < openedAt + admissionStartDelayMs;
     }
 
     /**

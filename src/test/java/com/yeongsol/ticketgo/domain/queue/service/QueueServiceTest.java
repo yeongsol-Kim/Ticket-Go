@@ -53,6 +53,9 @@ class QueueServiceTest {
     @Mock
     private AdaptivePollingPolicy pollingPolicy;
 
+    @Mock
+    private QueueStreamPolicy streamPolicy;
+
     @InjectMocks
     private QueueService queueService;
 
