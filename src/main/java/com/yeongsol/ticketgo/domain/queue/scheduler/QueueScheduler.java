@@ -35,14 +35,15 @@ public class QueueScheduler {
 
     // 처리율 sweep용 config (재컴파일 없이 env/properties로 조절)
     // env 예: QUEUE_SCHEDULER_ADMIT_COUNT=50, QUEUE_SCHEDULER_DELAY_MS=1000
-    @Value("${queue.scheduler.admit-count:10}")
+    // 기본값 32명/200ms = 3차 부하테스트 설정 (상한 없이 몰아 넣으면 결제가 한꺼번에 몰려 승인 p95 악화)
+    @Value("${queue.scheduler.admit-count:32}")
     private int admitCountPerCycle;      // 1회 입장시킬 최대 인원
 
     @Value("${queue.scheduler.max-booking-retry:3}")
     private int maxBookingRetry;         // 낙관락 리트라이 횟수
 
     @Scheduled(
-            fixedDelayString = "${queue.scheduler.delay-ms:5000}",
+            fixedDelayString = "${queue.scheduler.delay-ms:200}",
             initialDelayString = "${queue.scheduler.initial-delay-ms:5000}"
     )
     public void processQueueAdmission() {

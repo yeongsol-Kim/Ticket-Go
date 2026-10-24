@@ -33,25 +33,26 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class AdaptivePollingPolicy {
 
-    @Value("${queue.polling.ratio-near:0.5}")
+    // 기본값 = 3차 부하테스트(1만 동시, 2 vCPU)에서 고른 c2 설정: 폴링 ~3.4만 건(1인 3.4회), 통보 지연 중앙 ~2초
+    @Value("${queue.polling.ratio-near:0.7}")
     private double ratioNear;
 
-    @Value("${queue.polling.ratio-far:0.5}")
+    @Value("${queue.polling.ratio-far:0.8}")
     private double ratioFar;
 
-    @Value("${queue.polling.near-wait-seconds:10}")
+    @Value("${queue.polling.near-wait-seconds:5}")
     private double nearWaitSeconds;      // 예상 대기가 이 이하면 ratio-near
 
-    @Value("${queue.polling.far-wait-seconds:60}")
+    @Value("${queue.polling.far-wait-seconds:40}")
     private double farWaitSeconds;       // 예상 대기가 이 이상이면 ratio-far
 
-    @Value("${queue.polling.min-rate:0}")
-    private double minRate;              // 입장 속도 하한(명/초). 0이면 실측 그대로
+    @Value("${queue.polling.min-rate:85}")
+    private double minRate;              // 입장 속도 하한(명/초). 0이면 실측 그대로. 실제 입장 속도 근처로 잡는다
 
-    @Value("${queue.polling.min-seconds:2}")
+    @Value("${queue.polling.min-seconds:3}")
     private int minSeconds;
 
-    @Value("${queue.polling.max-seconds:20}")
+    @Value("${queue.polling.max-seconds:150}")
     private int maxSeconds;
 
     @Value("${queue.polling.fallback-rate:100}")
