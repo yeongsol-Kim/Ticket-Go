@@ -51,3 +51,6 @@ logs/
 
 # 부하테스트 토큰 (JWT - 커밋 금지)
 load-test/tokens.json
+
+# Claude Code 로컬 설정 (개인 권한·토큰 포함)
+.claude/settings.local.json

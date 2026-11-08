@@ -1,6 +1,7 @@
 package com.yeongsol.ticketgo.common.exception;
 
 import com.yeongsol.ticketgo.common.dto.ErrorResponse;
+import io.jsonwebtoken.JwtException;
 import jakarta.persistence.OptimisticLockException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -92,6 +93,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleBadCredentialsException(BadCredentialsException e) {
         log.warn("BadCredentialsException: {}", e.getMessage());
         ErrorResponse response = ErrorResponse.of(ErrorCode.INVALID_INPUT_VALUE, e.getMessage());
+        return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+    }
+
+    /**
+     * JwtException 처리
+     * 만료·위조된 토큰. permitAll 경로(/api/queue/**)는 컨트롤러가 토큰을 직접 파싱하므로
+     * 여기서 잡지 않으면 아래 Exception 핸들러가 500으로 응답한다
+     */
+    @ExceptionHandler(JwtException.class)
+    public ResponseEntity<ErrorResponse> handleJwtException(JwtException e) {
+        log.debug("JwtException: {}", e.getMessage());
+        ErrorResponse response = ErrorResponse.of(ErrorCode.INVALID_TOKEN);
         return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
     }
 

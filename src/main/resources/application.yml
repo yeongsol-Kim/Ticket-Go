@@ -60,12 +60,10 @@ app:
     timeout-minutes: 10  # 예약 타임아웃 (BookingService에서 사용)
     max-tickets-per-booking: 4  # 1회 최대 예매 수
 
-  jwt:
-    secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm}
-    expiration: 86400000  # 24시간 (밀리초)
 
 # JWT 설정
 ticketgo:
   jwt:
+    # 기본값은 로컬 개발용. prod 프로필은 JWT_SECRET이 없으면 기동하지 않는다 (application-prod.yml)
     secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm}
     expiration-ms: 86400000  # 24시간 (밀리초)

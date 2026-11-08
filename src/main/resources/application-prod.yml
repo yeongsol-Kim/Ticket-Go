@@ -36,3 +36,8 @@ logging:
     name: logs/ticketgo.log  # 파일 로깅
     max-size: 10MB
     max-history: 30  # 30일치 보관
+
+# JWT - 기본값 없음: 공개 저장소의 기본 시크릿으로 토큰을 위조할 수 없도록, 미설정 시 기동 실패
+ticketgo:
+  jwt:
+    secret: ${JWT_SECRET}

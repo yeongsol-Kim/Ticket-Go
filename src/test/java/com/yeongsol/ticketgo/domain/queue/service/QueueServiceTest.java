@@ -77,7 +77,7 @@ class QueueServiceTest {
             Long eventId = 1L;
             Long memberId = 1L;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(false);
+            given(redisTemplate.hasKey("payment_session:" + eventId + ":" + memberId)).willReturn(false);
             given(zSetOperations.score("queue:" + eventId, memberId.toString())).willReturn(null);
             given(zSetOperations.add(eq("queue:" + eventId), eq(memberId.toString()), anyDouble())).willReturn(true);
             given(zSetOperations.rank("queue:" + eventId, memberId.toString())).willReturn(0L);
@@ -101,7 +101,7 @@ class QueueServiceTest {
             Long eventId = 1L;
             Long memberId = 1L;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(true);
+            given(redisTemplate.hasKey("payment_session:" + eventId + ":" + memberId)).willReturn(true);
 
             // When & Then
             assertThatThrownBy(() -> queueService.enterQueue(eventId, memberId, 2))
@@ -116,7 +116,7 @@ class QueueServiceTest {
             Long memberId = 1L;
             double existingScore = 1000.0;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(false);
+            given(redisTemplate.hasKey("payment_session:" + eventId + ":" + memberId)).willReturn(false);
             given(zSetOperations.score("queue:" + eventId, memberId.toString())).willReturn(existingScore);
             given(zSetOperations.rank("queue:" + eventId, memberId.toString())).willReturn(5L);
 
@@ -329,7 +329,7 @@ class QueueServiceTest {
             Long eventId = 1L;
             Long memberId = 1L;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(true);
+            given(redisTemplate.hasKey("payment_session:" + eventId + ":" + memberId)).willReturn(true);
 
             // When
             boolean result = queueService.hasPaymentSession(eventId, memberId);
@@ -345,7 +345,7 @@ class QueueServiceTest {
             Long eventId = 1L;
             Long memberId = 1L;
 
-            given(setOperations.isMember("active:" + eventId, memberId.toString())).willReturn(false);
+            given(redisTemplate.hasKey("payment_session:" + eventId + ":" + memberId)).willReturn(false);
 
             // When
             boolean result = queueService.hasPaymentSession(eventId, memberId);

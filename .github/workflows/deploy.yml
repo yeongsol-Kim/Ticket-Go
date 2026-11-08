@@ -1,8 +1,9 @@
 name: Deploy to EC2
 
+# 수동 실행만: EC2를 평소엔 꺼 두므로, push마다 돌면 배포 단계가 실패하고
+# Docker Hub의 latest만 덮어써진다 (부하테스트용 이미지는 sse-gate 등 별도 태그로 관리)
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:

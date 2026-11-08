@@ -17,6 +17,9 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C003", "서버 오류가 발생했습니다"),
     INVALID_TYPE_VALUE(HttpStatus.BAD_REQUEST, "C004", "잘못된 타입입니다"),
 
+    // Auth
+    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "A001", "유효하지 않거나 만료된 토큰입니다"),
+
     // Member
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "M001", "존재하지 않는 회원입니다"),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "M002", "이미 존재하는 이메일입니다"),
