@@ -98,16 +98,22 @@
 
 ## 블로그
 
-1. 1차 부하테스트: SLO 정의와 첫 측정
-2. INSERT vs UPDATE 티켓 발급 비교 (통제되지 않은 실험이 거짓말을 한다)
-3. 대기열 dequeue ↔ 세션 발급 race
-4. 처리량 천장과 측정 방법론
-5. 벌크 처리와 무한 복원 버그
-6. 1만 동시 접속: 연결 천장 8,292와 하드웨어 한계
-7. 3차 1편: 적응형 폴링과 세션 버그
-8. 3차 2편: 폴링/SSE 하이브리드와 입장 시작 지연
+**설계**
+- [프로젝트 시작: 대용량 트래픽 처리를 위한 티케팅 시스템](https://velog.io/@0_s0l/%EB%8C%80%EC%9A%A9%EB%9F%89-%ED%8A%B8%EB%9E%98%ED%94%BD-%EC%B2%98%EB%A6%AC%EB%A5%BC-%EC%9C%84%ED%95%9C-%ED%8B%B0%EC%BC%80%ED%8C%85-%EC%8B%9C%EC%8A%A4%ED%85%9C-%EB%A7%8C%EB%93%A4%EA%B8%B0-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-%EC%8B%9C%EC%9E%91)
+- [도메인 모델 설계](https://velog.io/@0_s0l/Ticket-Go%EB%8F%84%EB%A9%94%EC%9D%B8-%EB%AA%A8%EB%8D%B8-%EC%84%A4%EA%B3%84)
+- [API 설계 및 구현](https://velog.io/@0_s0l/Ticket-Go-API-%EC%84%A4%EA%B3%84-%EB%B0%8F-%EA%B5%AC%ED%98%84)
+- [Why? 왜 이렇게 설계했나: 고민사항과 결정 이유](https://velog.io/@0_s0l/Ticket-Go-%EC%84%A4%EA%B3%84-%EC%A4%91-%EB%A7%88%EC%A3%BC%ED%95%9C-%EA%B3%A0%EB%AF%BC%EC%82%AC%ED%95%AD-%EC%A0%95%EB%A6%AC)
 
-블로그: https://velog.io/@0_s0l/series/Ticket-Go
+**부하테스트**
+1. [1차 부하테스트 정리](https://velog.io/@0_s0l/Ticket-Go-1%EC%B0%A8-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-%EC%A0%95%EB%A6%AC)
+2. [INSERT vs UPDATE 티켓 발급 방식 비교](https://velog.io/@0_s0l/Ticket-Go-INSERT-vs-UPDATE-%ED%8B%B0%EC%BC%93-%EB%B0%9C%EA%B8%89-%EB%B0%A9%EC%8B%9D-%EB%B9%84%EA%B5%90)
+3. [2차 (1) config 튜닝 천장 측정](https://velog.io/@0_s0l/Ticket-Go-2%EC%B0%A8-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-1-config-%ED%8A%9C%EB%8B%9D-%EC%B2%9C%EC%9E%A5-%EC%B8%A1%EC%A0%95)
+4. [2차 (2) 벌크 처리와 버그 수정](https://velog.io/@0_s0l/Ticket-Go2%EC%B0%A8-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-2%EC%B0%A8-2-%EB%B2%8C%ED%81%AC-%EC%B2%98%EB%A6%AC%EC%99%80-%EB%B2%84%EA%B7%B8-%EC%88%98%EC%A0%95)
+5. [2차 (3) 10,000명 동시 접속](https://velog.io/@0_s0l/Ticket-Go-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-2%EC%B0%A8-3-10000%EB%AA%85-%EB%8F%99%EC%8B%9C-%EC%A0%91%EC%86%8D)
+6. [3차 (1) 폴링 튜닝으로 p95 1초 달성](https://velog.io/@0_s0l/Ticket-Go-3%EC%B0%A8-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-%ED%8F%B4%EB%A7%81%ED%8A%9C%EB%8B%9D%EC%9C%BC%EB%A1%9C-p95-1%EC%B4%88-%EB%A7%9E%EC%B6%94%EA%B8%B0)
+7. [3차 (2) SSE 하이브리드 방식으로 SLO 달성](https://velog.io/@0_s0l/Ticket-GO-%EC%B5%9C%EC%A2%85-3%EC%B0%A8-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-2-SSE-%ED%95%98%EC%9D%B4%EB%B8%8C%EB%A6%AC%EB%93%9C-%EB%B0%A9%EC%8B%9D%EC%9C%BC%EB%A1%9C-SLO-%EB%8B%AC%EC%84%B1)
+
+전체 시리즈: https://velog.io/@0_s0l/series/Ticket-Go
 
 ---
 
