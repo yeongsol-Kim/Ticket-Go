@@ -107,7 +107,7 @@
 7. 3차 1편: 적응형 폴링과 세션 버그
 8. 3차 2편: 폴링/SSE 하이브리드와 입장 시작 지연
 
-블로그: https://velog.io/@0_s0l
+블로그: https://velog.io/@0_s0l/series/Ticket-Go
 
 ---
 
